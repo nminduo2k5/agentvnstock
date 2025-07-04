@@ -1,6 +1,6 @@
 # src/ui/styles.py
 """
-CSS Styles cho AI Trading Team Vietnam
+CSS Styles cho AI Trading Team Vietnam - 6 Agents + Gemini
 Custom styling cho Streamlit components
 """
 

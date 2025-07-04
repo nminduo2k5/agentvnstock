@@ -1,19 +1,29 @@
 # src/data/vn_stock_api.py
 """
-Vietnamese Stock Market API Integration
-Tích hợp data từ các nguồn chứng khoán Việt Nam
+Vietnamese Stock Market API Integration with vnstock
+Tích hợp data thật từ thị trường chứng khoán Việt Nam
 """
 
-import requests
-import pandas as pd
 import asyncio
-import aiohttp
+import logging
+import time
 from datetime import datetime, timedelta
 from typing import Dict, List, Any, Optional
-import logging
-import json
-import time
 from dataclasses import dataclass
+
+try:
+    # Try installed vnstock first
+    from vnstock import Vnstock
+except ImportError:
+    try:
+        # Try local vnstock as fallback
+        import sys
+        import os
+        sys.path.append(os.path.join(os.path.dirname(__file__), '..', '..'))
+        from vnstock import Vnstock
+    except ImportError:
+        print("WARNING: vnstock not available. Install with: pip install vnstock")
+        Vnstock = None
 
 logger = logging.getLogger(__name__)
 
@@ -33,29 +43,17 @@ class VNStockData:
 
 class VNStockAPI:
     """
-    API client cho Vietnamese stock market data
-    Sử dụng multiple sources để đảm bảo reliability
+    API client cho Vietnamese stock market data using vnstock
+    Sử dụng vnstock để lấy dữ liệu thật từ thị trường VN
     """
     
     def __init__(self):
-        self.base_urls = {
-            'vietstock': 'https://finance.vietstock.vn/data',
-            'investing': 'https://api.investing.com',
-            'cafef': 'https://s.cafef.vn/data',
-            'vnexpress': 'https://vnexpress.net/api',
-            'simplize':'https://simplize.vn/api'
-        }
-        
-        self.session = requests.Session()
-        self.session.headers.update({
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-            'Accept': 'application/json, text/plain, */*',
-            'Accept-Language': 'vi-VN,vi;q=0.9,en;q=0.8'
-        })
+        # Initialize vnstock
+        self.stock = Vnstock() if Vnstock else None
         
         # Cache để avoid quá nhiều API calls
         self.cache = {}
-        self.cache_duration = 60  # 1 minute, giảm từ 5 phút để dữ liệu mới hơn
+        self.cache_duration = 60  # 1 minute
         
         # Vietnamese stock symbols mapping
         self.vn_stocks = {
@@ -93,7 +91,7 @@ class VNStockAPI:
 
     async def get_stock_data(self, symbol: str, force_refresh: bool = False) -> Optional[VNStockData]:
         """
-        Lấy stock data cho một symbol (ưu tiên API trả về dữ liệu thành công)
+        Lấy stock data cho một symbol sử dụng vnstock
         """
         try:
             cache_key = f"stock_{symbol}"
@@ -101,164 +99,71 @@ class VNStockAPI:
                 logger.info(f"📋 Using cached data for {symbol}")
                 return self.cache[cache_key]['data']
 
-            # Danh sách các hàm fetch API, ưu tiên thứ tự bạn muốn
-            fetchers = [
-                self._fetch_vietstock_data,
-                self._fetch_cafef_data,
-                self._fetch_simplize_data,
-                self._fetch_investing_data
-            ]
-
-            data = None
-            for fetcher in fetchers:
-                try:
-                    data = await fetcher(symbol)
-                    if data:
-                        logger.info(f"✅ Got realtime data for {symbol} from {fetcher.__name__}")
-                        break
-                except Exception as e:
-                    logger.error(f"❌ Error in {fetcher.__name__} for {symbol}: {e}")
-
-            if not data:
-                logger.warning(f"⚠️ No real data for {symbol}, using simulated data")
-                data = self._generate_mock_data(symbol)
-
-            if data:
-                self.cache[cache_key] = {
-                    'data': data,
-                    'timestamp': time.time()
-                }
+            # Sử dụng vnstock để lấy dữ liệu thật
+            if self.stock:
+                data = await self._fetch_vnstock_data(symbol)
+                if data:
+                    logger.info(f"✅ Got real data for {symbol} from vnstock")
+                    self.cache[cache_key] = {
+                        'data': data,
+                        'timestamp': time.time()
+                    }
+                    return data
+            
+            # Fallback to mock data if vnstock fails
+            logger.warning(f"⚠️ vnstock failed for {symbol}, using mock data")
+            data = self._generate_mock_data(symbol)
             return data
+            
         except Exception as e:
             logger.error(f"❌ Error fetching data for {symbol}: {e}")
             return self._generate_mock_data(symbol)
     
-    async def _fetch_vietstock_data(self, symbol: str) -> Optional[VNStockData]:
-        """Fetch data từ VietStock"""
+    async def _fetch_vnstock_data(self, symbol: str) -> Optional[VNStockData]:
+        """Fetch data từ vnstock"""
         try:
-            url = f"https://finance.vietstock.vn/data/stockinfo?scode={symbol}"
-            response = self.session.get(url, timeout=10)
-            if response.status_code == 200:
-                data = response.json()
-                return self._parse_vietstock_response(symbol, data)
-            else:
-                logger.error(f"❌ Không lấy được dữ liệu từ VietStock cho {symbol}, status: {response.status_code}")
+            # Lấy thông tin cơ bản của cổ phiếu
+            quote_data = self.stock.stock(symbol=symbol, source='VCI').quote.history(period='1D')
+            
+            if quote_data.empty:
                 return None
+                
+            # Lấy dòng dữ liệu mới nhất
+            latest = quote_data.iloc[-1]
+            
+            # Tính toán change và change_percent
+            current_price = latest['close']
+            prev_close = latest['open'] if len(quote_data) == 1 else quote_data.iloc[-2]['close']
+            change = current_price - prev_close
+            change_percent = (change / prev_close) * 100 if prev_close != 0 else 0
+            
+            # Lấy thông tin tài chính
+            try:
+                financial_data = self.stock.stock(symbol=symbol, source='VCI').finance.ratio(period='quarter', lang='vi')
+                pe_ratio = financial_data.iloc[-1]['pe'] if not financial_data.empty else None
+                pb_ratio = financial_data.iloc[-1]['pb'] if not financial_data.empty else None
+            except:
+                pe_ratio = None
+                pb_ratio = None
+            
+            stock_info = self.vn_stocks.get(symbol, {})
+            
+            return VNStockData(
+                symbol=symbol,
+                price=float(current_price),
+                change=float(change),
+                change_percent=float(change_percent),
+                volume=int(latest['volume']),
+                market_cap=float(latest.get('marketCap', 0)) / 1_000_000_000,  # Convert to tỷ VND
+                pe_ratio=float(pe_ratio) if pe_ratio else None,
+                pb_ratio=float(pb_ratio) if pb_ratio else None,
+                sector=stock_info.get('sector', 'Unknown'),
+                exchange=stock_info.get('exchange', 'HOSE')
+            )
+            
         except Exception as e:
-            logger.error(f"❌ Lỗi khi gọi API VietStock cho {symbol}: {e}")
+            logger.error(f"❌ Error fetching vnstock data for {symbol}: {e}")
             return None
-
-    async def _fetch_investing_data(self, symbol: str) -> Optional[VNStockData]:
-        """Fetch data từ Investing.com"""
-        try:
-            url = f"https://api.investing.com/api/financialdata/{symbol}"
-            response = self.session.get(url, timeout=10)
-            if response.status_code == 200:
-                data = response.json()
-                # Bạn cần viết hàm _parse_investing_response nếu muốn parse dữ liệu này
-                # return self._parse_investing_response(symbol, data)
-                return None  # Chưa parse, trả về None để fallback
-            else:
-                logger.error(f"❌ Không lấy được dữ liệu từ Investing cho {symbol}, status: {response.status_code}")
-                return None
-        except Exception as e:
-            logger.error(f"❌ Lỗi khi gọi API Investing cho {symbol}: {e}")
-            return None
-
-    async def _fetch_cafef_data(self, symbol: str) -> Optional[VNStockData]:
-        """Fetch data từ CafeF"""
-        try:
-            url = f"https://s.cafef.vn/data/stockinfo.ashx?symbol={symbol}"
-            response = self.session.get(url, timeout=10)
-            if response.status_code == 200:
-                data = response.json()
-                return self._parse_cafef_response(symbol, data)
-            else:
-                logger.error(f"❌ Không lấy được dữ liệu từ CafeF cho {symbol}, status: {response.status_code}")
-                return None
-        except Exception as e:
-            logger.error(f"❌ Lỗi khi gọi API CafeF cho {symbol}: {e}")
-            return None
-
-    async def _fetch_vnexpress_data(self, symbol: str) -> Optional[dict]:
-        """Fetch news data từ VNExpress"""
-        try:
-            url = f"https://vnexpress.net/api/stock/{symbol}/news"
-            response = self.session.get(url, timeout=10)
-            if response.status_code == 200:
-                return response.json()
-            else:
-                logger.error(f"❌ Không lấy được dữ liệu từ VNExpress cho {symbol}, status: {response.status_code}")
-                return None
-        except Exception as e:
-            logger.error(f"❌ Lỗi khi gọi API VNExpress cho {symbol}: {e}")
-            return None
-
-    async def _fetch_simplize_data(self, symbol: str) -> Optional[VNStockData]:
-        """Fetch data từ Simplize API"""
-        try:
-            url = f"https://simplize.vn/api/stock/{symbol}"
-            response = self.session.get(url, timeout=10)
-            if response.status_code == 200:
-                data = response.json()
-                return self._parse_simplize_response(symbol, data)
-            else:
-                logger.error(f"❌ Không lấy được dữ liệu từ Simplize cho {symbol}, status: {response.status_code}")
-                return None
-        except Exception as e:
-            logger.error(f"❌ Lỗi khi gọi API Simplize cho {symbol}: {e}")
-            return None
-
-    def _parse_vietstock_response(self, symbol: str, data: Dict) -> VNStockData:
-        """Parse VietStock API response"""
-        stock_info = self.vn_stocks.get(symbol, {})
-        
-        return VNStockData(
-            symbol=symbol,
-            price=data.get('lastPrice', 50000),
-            change=data.get('change', 0),
-            change_percent=data.get('changePercent', 0),
-            volume=data.get('volume', 100000),
-            market_cap=data.get('marketCap', 10000),  # tỷ VND
-            pe_ratio=data.get('pe', 15.0),
-            pb_ratio=data.get('pb', 1.5),
-            sector=stock_info.get('sector', 'Unknown'),
-            exchange=stock_info.get('exchange', 'HOSE')
-        )
-    
-    def _parse_cafef_response(self, symbol: str, data: Dict) -> VNStockData:
-        """Parse CafeF API response"""
-        stock_info = self.vn_stocks.get(symbol, {})
-        
-        return VNStockData(
-            symbol=symbol,
-            price=data.get('price', 50000),
-            change=data.get('change', 0),
-            change_percent=data.get('change_percent', 0),
-            volume=data.get('volume', 100000),
-            market_cap=data.get('market_cap', 10000),
-            pe_ratio=data.get('pe_ratio', 15.0),
-            pb_ratio=data.get('pb_ratio', 1.5),
-            sector=stock_info.get('sector', 'Unknown'),
-            exchange=stock_info.get('exchange', 'HOSE')
-        )
-    
-    def _parse_simplize_response(self, symbol: str, data: dict) -> VNStockData:
-        """Parse Simplize API response"""
-        stock_info = self.vn_stocks.get(symbol, {})
-        # Giả sử data trả về có các trường tương tự, nếu khác thì map lại cho đúng
-        return VNStockData(
-            symbol=symbol,
-            price=data.get('price', 50000),
-            change=data.get('change', 0),
-            change_percent=data.get('changePercent', 0),
-            volume=data.get('volume', 100000),
-            market_cap=data.get('marketCap', 10000),
-            pe_ratio=data.get('pe', 15.0),
-            pb_ratio=data.get('pb', 1.5),
-            sector=stock_info.get('sector', 'Unknown'),
-            exchange=stock_info.get('exchange', 'HOSE')
-        )
     
     def _generate_mock_data(self, symbol: str) -> VNStockData:
         """
@@ -304,35 +209,34 @@ class VNStockAPI:
     
     async def get_market_overview(self) -> Dict[str, Any]:
         """
-        Lấy tổng quan thị trường Việt Nam
+        Lấy tổng quan thị trường Việt Nam sử dụng vnstock
         
         Returns:
             Dict: Market overview data
         """
         try:
-            # Check cache
             cache_key = "market_overview"
             if self._is_cache_valid(cache_key):
                 return self.cache[cache_key]['data']
             
-            # Fetch VN-Index data
-            vn_index_data = await self._fetch_vnindex_data()
-            
-            # Fetch sector performance
-            sector_performance = await self._fetch_sector_performance()
-            
-            # Fetch top movers
-            top_gainers, top_losers = await self._fetch_top_movers()
-            
-            overview = {
-                'vn_index': vn_index_data,
-                'sector_performance': sector_performance,
-                'top_gainers': top_gainers,
-                'top_losers': top_losers,
-                'foreign_flows': await self._fetch_foreign_flows(),
-                'market_sentiment': self._calculate_market_sentiment(),
-                'timestamp': datetime.now().isoformat()
-            }
+            if self.stock:
+                # Lấy dữ liệu VN-Index
+                vn_index_data = await self._fetch_vnindex_vnstock()
+                
+                # Lấy top movers
+                top_gainers, top_losers = await self._fetch_top_movers_vnstock()
+                
+                overview = {
+                    'vn_index': vn_index_data,
+                    'sector_performance': await self._fetch_sector_performance(),
+                    'top_gainers': top_gainers,
+                    'top_losers': top_losers,
+                    'foreign_flows': await self._fetch_foreign_flows(),
+                    'market_sentiment': self._calculate_market_sentiment(),
+                    'timestamp': datetime.now().isoformat()
+                }
+            else:
+                overview = self._generate_mock_market_overview()
             
             # Cache result
             self.cache[cache_key] = {
@@ -346,27 +250,32 @@ class VNStockAPI:
             logger.error(f"❌ Error fetching market overview: {e}")
             return self._generate_mock_market_overview()
     
-    async def _fetch_vnindex_data(self) -> Dict[str, Any]:
-        """Fetch VN-Index data"""
+    async def _fetch_vnindex_vnstock(self) -> Dict[str, Any]:
+        """Fetch VN-Index data using vnstock"""
         try:
-            # Trong thực tế sẽ call API thật
-            # Hiện tại return mock data
-            import random
+            # Lấy dữ liệu VN-Index
+            vnindex_data = self.stock.stock(symbol='VNINDEX', source='VCI').quote.history(period='1D')
             
-            base_index = 1200
-            variation = random.uniform(-0.02, 0.02)
-            current_index = base_index * (1 + variation)
+            if vnindex_data.empty:
+                return {'value': 1200, 'change': 0, 'change_percent': 0}
+            
+            latest = vnindex_data.iloc[-1]
+            prev_close = vnindex_data.iloc[-2]['close'] if len(vnindex_data) > 1 else latest['open']
+            
+            current_value = latest['close']
+            change = current_value - prev_close
+            change_percent = (change / prev_close) * 100 if prev_close != 0 else 0
             
             return {
-                'value': round(current_index, 2),
-                'change': round(current_index - base_index, 2),
-                'change_percent': round(variation * 100, 2),
-                'volume': random.randint(500_000_000, 1_500_000_000),  # Value in VND
-                'transaction_count': random.randint(50000, 150000)
+                'value': round(float(current_value), 2),
+                'change': round(float(change), 2),
+                'change_percent': round(float(change_percent), 2),
+                'volume': int(latest['volume']),
+                'transaction_count': int(latest.get('transaction_count', 0))
             }
             
         except Exception as e:
-            logger.error(f"❌ Error fetching VN-Index: {e}")
+            logger.error(f"❌ Error fetching VN-Index from vnstock: {e}")
             return {'value': 1200, 'change': 0, 'change_percent': 0}
     
     async def _fetch_sector_performance(self) -> Dict[str, float]:
@@ -381,34 +290,52 @@ class VNStockAPI:
         
         return performance
     
-    async def _fetch_top_movers(self) -> tuple:
-        """Fetch top gainers và losers"""
-        import random
-        
-        all_symbols = list(self.vn_stocks.keys())
-        
-        top_gainers = []
-        top_losers = []
-        
-        for _ in range(5):
-            symbol = random.choice(all_symbols)
-            change_percent = random.uniform(2, 7)  # 2-7% gain
-            top_gainers.append({
-                'symbol': symbol,
-                'change_percent': round(change_percent, 2),
-                'price': self.vn_stocks[symbol].get('base_price', 50000)
-            })
-        
-        for _ in range(5):
-            symbol = random.choice(all_symbols)
-            change_percent = random.uniform(-7, -2)  # 2-7% loss
-            top_losers.append({
-                'symbol': symbol,
-                'change_percent': round(change_percent, 2),
-                'price': self.vn_stocks[symbol].get('base_price', 50000)
-            })
-        
-        return top_gainers, top_losers
+    async def _fetch_top_movers_vnstock(self) -> tuple:
+        """Fetch top gainers và losers using vnstock"""
+        try:
+            # Lấy dữ liệu cho tất cả stocks
+            all_symbols = list(self.vn_stocks.keys())
+            stock_performances = []
+            
+            for symbol in all_symbols[:10]:  # Limit to avoid too many API calls
+                try:
+                    stock_data = await self._fetch_vnstock_data(symbol)
+                    if stock_data:
+                        stock_performances.append({
+                            'symbol': symbol,
+                            'change_percent': stock_data.change_percent,
+                            'price': stock_data.price
+                        })
+                except:
+                    continue
+            
+            # Sort by change_percent
+            stock_performances.sort(key=lambda x: x['change_percent'], reverse=True)
+            
+            top_gainers = stock_performances[:5]
+            top_losers = stock_performances[-5:]
+            
+            return top_gainers, top_losers
+            
+        except Exception as e:
+            logger.error(f"❌ Error fetching top movers: {e}")
+            # Fallback to mock data
+            import random
+            all_symbols = list(self.vn_stocks.keys())
+            
+            top_gainers = [{
+                'symbol': random.choice(all_symbols),
+                'change_percent': round(random.uniform(2, 7), 2),
+                'price': 50000
+            } for _ in range(5)]
+            
+            top_losers = [{
+                'symbol': random.choice(all_symbols),
+                'change_percent': round(random.uniform(-7, -2), 2),
+                'price': 50000
+            } for _ in range(5)]
+            
+            return top_gainers, top_losers
     
     async def _fetch_foreign_flows(self) -> Dict[str, int]:
         """Fetch foreign investment flows"""
@@ -460,7 +387,7 @@ class VNStockAPI:
     
     async def get_historical_data(self, symbol: str, days: int = 30) -> List[Dict[str, Any]]:
         """
-        Lấy historical data cho backtesting
+        Lấy historical data cho backtesting sử dụng vnstock
         
         Args:
             symbol: Stock symbol
@@ -470,37 +397,67 @@ class VNStockAPI:
             List of historical data points
         """
         try:
-            # Mock historical data generation
-            import random
-            from datetime import timedelta
-            
-            current_stock = await self.get_stock_data(symbol)
-            if not current_stock:
-                return []
-            
-            historical_data = []
-            base_price = current_stock.price
-            
-            for i in range(days, 0, -1):
-                date = datetime.now() - timedelta(days=i)
+            if self.stock:
+                # Lấy dữ liệu lịch sử từ vnstock
+                end_date = datetime.now().strftime('%Y-%m-%d')
+                start_date = (datetime.now() - timedelta(days=days)).strftime('%Y-%m-%d')
                 
-                # Random walk với mean reversion
-                daily_return = random.normalvariate(0.001, 0.025)  # 0.1% daily return, 2.5% volatility
-                base_price *= (1 + daily_return)
+                hist_data = self.stock.stock(symbol=symbol, source='VCI').quote.history(
+                    start=start_date, 
+                    end=end_date
+                )
                 
-                historical_data.append({
-                    'date': date.strftime('%Y-%m-%d'),
-                    'symbol': symbol,
-                    'price': round(base_price, -2),
-                    'volume': random.randint(50000, 500000),
-                    'change_percent': round(daily_return * 100, 2)
-                })
-            
-            return historical_data
+                if hist_data.empty:
+                    return []
+                
+                historical_data = []
+                for idx, row in hist_data.iterrows():
+                    # Tính change_percent
+                    prev_close = hist_data.iloc[max(0, idx-1)]['close'] if idx > 0 else row['open']
+                    change_percent = ((row['close'] - prev_close) / prev_close * 100) if prev_close != 0 else 0
+                    
+                    historical_data.append({
+                        'date': idx.strftime('%Y-%m-%d'),
+                        'symbol': symbol,
+                        'price': float(row['close']),
+                        'volume': int(row['volume']),
+                        'change_percent': round(float(change_percent), 2),
+                        'open': float(row['open']),
+                        'high': float(row['high']),
+                        'low': float(row['low'])
+                    })
+                
+                return historical_data
+            else:
+                # Fallback to mock data
+                return self._generate_mock_historical_data(symbol, days)
             
         except Exception as e:
             logger.error(f"❌ Error fetching historical data for {symbol}: {e}")
-            return []
+            return self._generate_mock_historical_data(symbol, days)
+    
+    def _generate_mock_historical_data(self, symbol: str, days: int) -> List[Dict[str, Any]]:
+        """Generate mock historical data"""
+        import random
+        from datetime import timedelta
+        
+        historical_data = []
+        base_price = 50000
+        
+        for i in range(days, 0, -1):
+            date = datetime.now() - timedelta(days=i)
+            daily_return = random.normalvariate(0.001, 0.025)
+            base_price *= (1 + daily_return)
+            
+            historical_data.append({
+                'date': date.strftime('%Y-%m-%d'),
+                'symbol': symbol,
+                'price': round(base_price, -2),
+                'volume': random.randint(50000, 500000),
+                'change_percent': round(daily_return * 100, 2)
+            })
+        
+        return historical_data
     
     def get_available_symbols(self) -> List[Dict[str, str]]:
         """
@@ -675,18 +632,6 @@ def calculate_technical_indicators(prices: List[float]) -> Dict[str, float]:
             'trend': 'Bullish' if current_price > sma_20 else 'Bearish'
         }
 
-    except Exception as e:
-        logger.error(f"❌ Error calculating technical indicators: {e}")
-        return {}
-            'current_price': current_price,
-            'sma_5': round(sma_5, 2),
-            'sma_20': round(sma_20, 2),
-            'rsi': round(rsi, 2),
-            'support': recent_low,
-            'resistance': recent_high,
-            'trend': 'Bullish' if current_price > sma_20 else 'Bearish'
-        }
-        
     except Exception as e:
         logger.error(f"❌ Error calculating technical indicators: {e}")
         return {}

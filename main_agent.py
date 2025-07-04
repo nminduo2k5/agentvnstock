@@ -84,8 +84,10 @@ class MainAgent:
                 prediction, analysis, risk_data = await asyncio.gather(prediction_task, analysis_task, risk_task)
                 data = {"price_prediction": prediction, "investment_analysis": analysis, "risk_assessment": risk_data}
         
-        # Use Gemini to generate expert advice
-        gemini_response = await self.gemini_agent.generate_expert_advice(query, symbol, data)
+        # Use Gemini to generate expert advice (run in thread pool since it's sync)
+        gemini_response = await run_in_threadpool(
+            self.gemini_agent.generate_expert_advice, query, symbol, data
+        )
 
         # Backend chỉ trả về dữ liệu JSON, không tạo HTML.
         # Frontend sẽ chịu trách nhiệm render.

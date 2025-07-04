@@ -13,7 +13,11 @@ from dataclasses import asdict
 # Thêm dòng này để lấy model từ biến môi trường
 GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-1.5-flash")
 
-app = FastAPI(title="Stock Analysis Agent API")
+app = FastAPI(
+    title="AI Trading Team Vietnam API",
+    description="6 AI Agents + Gemini Chatbot API",
+    version="1.0.0"
+)
 
 # Add CORS middleware
 app.add_middleware(
@@ -24,8 +28,15 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-vn_api = VNStockAPI()
-main_agent = MainAgent(vn_api=vn_api) # Dependency Injection: Dùng chung 1 instance vn_api
+# Initialize with error handling
+try:
+    vn_api = VNStockAPI()
+    main_agent = MainAgent(vn_api=vn_api)
+    print("✅ API initialized successfully")
+except Exception as e:
+    print(f"❌ Failed to initialize API: {e}")
+    vn_api = None
+    main_agent = None
 
 # Mount static files
 app.mount("/static", StaticFiles(directory="static"), name="static")
@@ -34,6 +45,28 @@ class QueryRequest(BaseModel):
     query: str
     symbol: str = ""
 
+@app.on_event("startup")
+async def startup_event():
+    print("🚀 Starting Duong Trading Vietnam API...")
+    print(f"📊 VN API Status: {'✅ Ready' if vn_api else '❌ Failed'}")
+    print(f"🤖 Main Agent Status: {'✅ Ready' if main_agent else '❌ Failed'}")
+
+@app.get("/health")
+async def health_check():
+    return {
+        "status": "healthy",
+        "vn_api": "ready" if vn_api else "failed",
+        "main_agent": "ready" if main_agent else "failed",
+        "agents": {
+            "price_predictor": "ready",
+            "ticker_news": "ready", 
+            "market_news": "ready",
+            "investment_expert": "ready",
+            "risk_expert": "ready",
+            "gemini_agent": "ready" if main_agent and hasattr(main_agent, 'gemini_agent') else "failed"
+        }
+    }
+
 @app.get("/", response_class=HTMLResponse)
 async def read_root():
     with open("static/index.html", "r", encoding="utf-8") as f:
@@ -41,80 +74,106 @@ async def read_root():
 
 @app.post("/analyze")
 async def analyze_stock(symbol: str):
+    if not main_agent:
+        raise HTTPException(status_code=503, detail="Service not initialized")
     try:
         result = await main_agent.analyze_stock(symbol.upper())
         return result
     except Exception as e:
+        print(f"Error in analyze_stock: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/query")
 async def process_query(request: QueryRequest):
+    if not main_agent:
+        raise HTTPException(status_code=503, detail="Service not initialized")
     try:
-        # Gọi đúng hàm nếu không có tham số model
-        result = await main_agent.process_query(request.query, request.symbol.upper())
+        symbol = request.symbol.upper() if request.symbol else ""
+        result = await main_agent.process_query(request.query, symbol)
         return result
     except Exception as e:
+        print(f"Error in process_query: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/market")
 async def get_market_overview():
+    if not main_agent:
+        raise HTTPException(status_code=503, detail="Service not initialized")
     try:
         result = await main_agent.get_market_overview()
         return result
     except Exception as e:
+        print(f"Error in get_market_overview: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/predict/{symbol}")
 async def predict_price(symbol: str):
+    if not main_agent:
+        raise HTTPException(status_code=503, detail="Service not initialized")
     try:
         result = await run_in_threadpool(main_agent.price_predictor.predict_price, symbol.upper())
         return result
     except Exception as e:
+        print(f"Error in predict_price: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/news/{symbol}")
 async def get_ticker_news(symbol: str):
+    if not main_agent:
+        raise HTTPException(status_code=503, detail="Service not initialized")
     try:
         result = await run_in_threadpool(main_agent.ticker_news.get_ticker_news, symbol.upper())
         return result
     except Exception as e:
+        print(f"Error in get_ticker_news: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/risk/{symbol}")
 async def assess_risk(symbol: str):
+    if not main_agent:
+        raise HTTPException(status_code=503, detail="Service not initialized")
     try:
         result = await run_in_threadpool(main_agent.risk_expert.assess_risk, symbol.upper())
         return result
     except Exception as e:
+        print(f"Error in assess_risk: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/vn-stock/{symbol}")
 async def get_vn_stock(symbol: str):
+    if not vn_api:
+        raise HTTPException(status_code=503, detail="Service not initialized")
     try:
         result = await vn_api.get_stock_data(symbol.upper())
         if result:
-            return asdict(result)  # Real data available
+            return asdict(result)
         else:
-            # No real data available, generate mock for demo
             mock_data = vn_api._generate_mock_data(symbol.upper())
             return asdict(mock_data)
     except Exception as e:
+        print(f"Error in get_vn_stock: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/vn-market")
 async def get_vn_market():
+    if not vn_api:
+        raise HTTPException(status_code=503, detail="Service not initialized")
     try:
-        result = await vn_api.get_market_overview() # Sử dụng instance vn_api đã được tạo
+        result = await vn_api.get_market_overview()
         return result
     except Exception as e:
+        print(f"Error in get_vn_market: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/vn-symbols")
 async def get_vn_symbols():
+    if not vn_api:
+        raise HTTPException(status_code=503, detail="Service not initialized")
     try:
-        result = vn_api.get_available_symbols() # Sử dụng instance vn_api đã được tạo
+        result = vn_api.get_available_symbols()
         return result
     except Exception as e:
+        print(f"Error in get_vn_symbols: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 if __name__ == "__main__":

@@ -10,11 +10,16 @@ class GeminiAgent:
         if not api_key:
             raise ValueError("GOOGLE_API_KEY not found in .env file")
         
-        genai.configure(api_key=api_key)
-        model_name = os.getenv('GEMINI_MODEL', 'gemini-1.5-flash')
-        self.model = genai.GenerativeModel(model_name)
+        try:
+            genai.configure(api_key=api_key)
+            model_name = os.getenv('GEMINI_MODEL', 'gemini-1.5-flash')
+            self.model = genai.GenerativeModel(model_name)
+            # Test the connection
+            self.model.generate_content("Hello")
+        except Exception as e:
+            raise ValueError(f"Failed to initialize Gemini: {str(e)}")
     
-    async def generate_expert_advice(self, query: str, symbol: str = None, data: dict = None):
+    def generate_expert_advice(self, query: str, symbol: str = None, data: dict = None):
         """Generate expert financial advice using Gemini"""
         
         # Build context prompt
@@ -57,14 +62,40 @@ Lưu ý: Trả lời bằng tiếng Việt, dựa trên dữ liệu thực tế,
 """
         
         try:
-            # Sử dụng hàm bất đồng bộ để không block event loop
-            response = await self.model.generate_content_async(context)
-            return self._parse_response(response.text)
+            # Generate content with safety settings
+            response = self.model.generate_content(
+                context,
+                generation_config=genai.types.GenerationConfig(
+                    temperature=0.7,
+                    max_output_tokens=2048,
+                )
+            )
+            
+            if response.text:
+                return self._parse_response(response.text)
+            else:
+                return {
+                    "expert_advice": "Xin lỗi, tôi không thể tạo phản hồi cho câu hỏi này.",
+                    "recommendations": ["Thử đặt câu hỏi khác", "Kiểm tra nội dung câu hỏi"]
+                }
+                
         except Exception as e:
-            return {
-                "expert_advice": f"Xin lỗi, tôi gặp khó khăn khi phân tích. Lỗi: {str(e)}",
-                "recommendations": ["Vui lòng thử lại sau", "Kiểm tra kết nối mạng"]
-            }
+            error_msg = str(e)
+            if "API_KEY" in error_msg.upper():
+                return {
+                    "expert_advice": "Lỗi API Key: Vui lòng kiểm tra GOOGLE_API_KEY trong file .env",
+                    "recommendations": ["Kiểm tra API key", "Thử tạo API key mới"]
+                }
+            elif "QUOTA" in error_msg.upper() or "LIMIT" in error_msg.upper():
+                return {
+                    "expert_advice": "Lỗi giới hạn API: Đã vượt quá giới hạn sử dụng",
+                    "recommendations": ["Chờ vài phút rồi thử lại", "Kiểm tra quota API"]
+                }
+            else:
+                return {
+                    "expert_advice": f"Lỗi hệ thống: {error_msg}",
+                    "recommendations": ["Thử lại sau", "Liên hệ hỗ trợ nếu vấn đề tiếp tục"]
+                }
     
     def _parse_response(self, response_text: str):
         """Parse enhanced Gemini response"""

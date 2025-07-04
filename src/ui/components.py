@@ -10,7 +10,7 @@ import plotly.express as px
 import pandas as pd
 from typing import Dict, List, Any, Optional
 from datetime import datetime, timedelta
-import base64
+import json
 
 def render_agent_card(agent_name: str, role: str, status: str = "ready", response: str = ""):
     """
@@ -215,6 +215,146 @@ def render_action_plan(recommendation: str, amount: float, confidence: float):
         recommendation: Final recommendation (BUY/SELL/HOLD)
         amount: Investment amount
         confidence: Confidence level
+    """
+    
+    actions = {
+        "BUY": {
+            "color": "#4caf50",
+            "icon": "✅",
+            "title": "Action Plan - MUA",
+            "steps": [
+                f"💰 Prepare {amount:,.0f} VND for investment",
+                "📊 Set stop-loss at recommended levels",
+                "⏰ Execute order during market hours",
+                "📱 Set price alerts for key levels",
+                "📅 Schedule 2-week review"
+            ]
+        },
+        "SELL": {
+            "color": "#f44336",
+            "icon": "🚫",
+            "title": "Action Plan - TRÁNH",
+            "steps": [
+                "⛔ Avoid investment at current levels",
+                "👀 Monitor for better entry points",
+                "📈 Wait for technical improvement",
+                "📰 Watch for positive catalysts",
+                "🔄 Re-evaluate in 2-4 weeks"
+            ]
+        },
+        "HOLD": {
+            "color": "#ff9800", 
+            "icon": "⏸️",
+            "title": "Action Plan - QUAN SÁT",
+            "steps": [
+                "👁️ Continue monitoring closely",
+                "📊 Wait for clearer signals",
+                "💼 Maintain current position if any",
+                "📅 Review weekly for updates",
+                "🔔 Set alerts for breakout levels"
+            ]
+        }
+    }
+    
+    action = actions[recommendation]
+    
+    st.markdown(f"""
+    <div style="
+        border: 2px solid {action['color']};
+        border-radius: 10px;
+        padding: 20px;
+        margin: 20px 0;
+        background-color: {action['color']}08;
+    ">
+        <h3 style="color: {action['color']}; margin: 0 0 15px 0;">
+            {action['icon']} {action['title']}
+        </h3>
+        <div style="background-color: white; padding: 15px; border-radius: 8px;">
+            {''.join([f'<p style="margin: 8px 0;"><strong>{step}</strong></p>' for step in action['steps']])}
+        </div>
+    </div>
+    """, unsafe_allow_html=True)
+
+def render_stock_chart(historical_data: List[Dict], symbol: str):
+    """
+    Render stock chart với technical indicators
+    """
+    if not historical_data:
+        st.warning("⚠️ Không có dữ liệu lịch sử")
+        return
+    
+    df = pd.DataFrame(historical_data)
+    df['date'] = pd.to_datetime(df['date'])
+    df = df.sort_values('date')
+    
+    fig = go.Figure()
+    fig.add_trace(go.Scatter(
+        x=df['date'], y=df['price'],
+        mode='lines', name=f'{symbol} Price',
+        line=dict(color='#2196f3', width=3)
+    ))
+    
+    fig.update_layout(
+        title=f'📈 {symbol} - Price Chart',
+        xaxis_title="Date", yaxis_title="Price (VND)",
+        height=400, template='plotly_white'
+    )
+    
+    st.plotly_chart(fig, use_container_width=True)
+
+def render_performance_metrics(metrics: Dict[str, float]):
+    """
+    Render performance metrics
+    """
+    col1, col2, col3, col4 = st.columns(4)
+    
+    with col1:
+        total_return = metrics.get('total_return', 0) * 100
+        st.metric("Total Return", f"{total_return:+.2f}%")
+    
+    with col2:
+        sharpe_ratio = metrics.get('sharpe_ratio', 0)
+        st.metric("Sharpe Ratio", f"{sharpe_ratio:.2f}")
+    
+    with col3:
+        max_drawdown = metrics.get('max_drawdown', 0) * 100
+        st.metric("Max Drawdown", f"{max_drawdown:.2f}%")
+    
+    with col4:
+        win_rate = metrics.get('win_rate', 0) * 100
+        st.metric("Win Rate", f"{win_rate:.1f}%")
+
+def render_loading_animation(message: str = "Đang xử lý..."):
+    """
+    Render loading animation
+    """
+    st.markdown(f"""
+    <div style="text-align: center; padding: 40px; background: linear-gradient(45deg, #667eea, #764ba2); 
+                border-radius: 10px; color: white; margin: 20px 0;">
+        <div style="border: 4px solid rgba(255,255,255,0.3); border-radius: 50%; border-top: 4px solid white;
+                    width: 40px; height: 40px; animation: spin 2s linear infinite; margin: 0 auto 20px auto;"></div>
+        <h3 style="margin: 0;">{message}</h3>
+    </div>
+    <style>
+    @keyframes spin {{ 0% {{ transform: rotate(0deg); }} 100% {{ transform: rotate(360deg); }} }}
+    </style>
+    """, unsafe_allow_html=True)
+
+def render_error_message(error: str, suggestion: str = ""):
+    """
+    Render error message
+    """
+    st.markdown(f"""
+    <div style="background-color: #ffebee; border: 1px solid #f44336; border-radius: 8px; 
+                padding: 20px; margin: 15px 0;">
+        <div style="display: flex; align-items: center; margin-bottom: 10px;">
+            <span style="font-size: 24px; margin-right: 10px;">⚠️</span>
+            <h4 style="margin: 0; color: #d32f2f;">Có lỗi xảy ra</h4>
+        </div>
+        <p style="margin: 10px 0; color: #666;">{error}</p>
+        {f'<p style="margin: 10px 0; color: #1976d2;"><strong>💡 Gợi ý:</strong> {suggestion}</p>' if suggestion else ''}
+    </div>
+    """, unsafe_allow_html=True)ce level
     """
     
     actions = {

@@ -433,6 +433,33 @@ button {
     line-height: 1.5;
 }
 
+/* Notification Toast */
+.toast {
+    position: fixed;
+    top: 20px;
+    right: 20px;
+    background: #28a745;
+    color: white;
+    padding: 12px 20px;
+    border-radius: 8px;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+    z-index: 1000;
+    transform: translateX(100%);
+    transition: transform 0.3s ease;
+}
+
+.toast.show {
+    transform: translateX(0);
+}
+
+.toast.error {
+    background: #dc3545;
+}
+
+.toast.info {
+    background: #17a2b8;
+}
+
 .expert-advice-box {
     background: linear-gradient(135deg, #e0ecff 0%, #f8faff 100%);
     border-left: 6px solid #2a5298;
@@ -486,4 +513,173 @@ button {
     margin-right: 8px;
     font-size: 1.1em;
     vertical-align: middle;
+}
+
+/* Agent Status Display */
+.agent-status-container {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 10px;
+    margin-top: 20px;
+    padding: 15px;
+    background: rgba(255,255,255,0.1);
+    border-radius: 10px;
+}
+
+.agent-status {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 8px 12px;
+    background: rgba(255,255,255,0.2);
+    border-radius: 6px;
+    font-size: 0.9rem;
+}
+
+.agent-name {
+    font-weight: 600;
+    color: white;
+}
+
+.status-indicator {
+    font-size: 1.1rem;
+    transition: all 0.3s;
+}
+
+.status-indicator.idle {
+    opacity: 0.6;
+}
+
+.status-indicator.working {
+    animation: pulse 1.5s infinite;
+}
+
+.status-indicator.done {
+    opacity: 1;
+}
+
+@keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.5; }
+}
+
+/* Mini Real-time Display */
+.mini-display {
+    margin-top: 15px;
+    padding: 12px;
+    background: linear-gradient(135deg, #e8f4f8 0%, #f0f8ff 100%);
+    border-radius: 8px;
+    border-left: 4px solid #2a5298;
+    display: none;
+}
+
+.mini-display:not(:empty) {
+    display: block;
+}
+
+.mini-stock-info {
+    display: flex;
+    align-items: center;
+    gap: 15px;
+    font-size: 0.95rem;
+}
+
+.mini-symbol {
+    font-weight: bold;
+    color: #2a5298;
+    font-size: 1.1rem;
+}
+
+.mini-price {
+    font-weight: 600;
+    font-size: 1.05rem;
+}
+
+.mini-change {
+    font-weight: 500;
+    font-size: 0.9rem;
+}
+
+/* Enhanced Button Styles */
+.btn-group button {
+    position: relative;
+    overflow: hidden;
+}
+
+.btn-group button::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: -100%;
+    width: 100%;
+    height: 100%;
+    background: linear-gradient(90deg, transparent, rgba(255,255,255,0.2), transparent);
+    transition: left 0.5s;
+}
+
+.btn-group button:hover::before {
+    left: 100%;
+}
+
+/* Enhanced Loading Animation */
+.loading .result-header {
+    background: linear-gradient(135deg, #4ecdc4 0%, #44a08d 100%);
+    color: white;
+    padding: 20px;
+    border-radius: 10px;
+    margin-bottom: 20px;
+}
+
+/* Responsive Improvements */
+@media (max-width: 768px) {
+    .input-group {
+        flex-direction: column;
+    }
+    
+    .btn-group {
+        flex-direction: column;
+    }
+    
+    .btn-group button {
+        width: 100%;
+        margin-bottom: 10px;
+    }
+    
+    .agent-status-container {
+        grid-template-columns: 1fr;
+    }
+    
+    .mini-stock-info {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 5px;
+    }
+}
+
+/* Enhanced Error Display */
+.error .result-header {
+    background: linear-gradient(135deg, #ff6b6b 0%, #ee5a52 100%);
+    animation: shake 0.5s;
+}
+
+@keyframes shake {
+    0%, 100% { transform: translateX(0); }
+    25% { transform: translateX(-5px); }
+    75% { transform: translateX(5px); }
+}
+
+/* Success Animation */
+.result:not(.error):not(.loading) .result-header {
+    animation: slideInDown 0.5s ease-out;
+}
+
+@keyframes slideInDown {
+    0% {
+        transform: translateY(-20px);
+        opacity: 0;
+    }
+    100% {
+        transform: translateY(0);
+        opacity: 1;
+    }
 }

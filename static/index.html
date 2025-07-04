@@ -12,6 +12,9 @@
         <div class="header">
             <h1><i class="fas fa-robot"></i> AI Stock Analysis Vietnam</h1>
             <p>Hệ thống phân tích cổ phiếu thông minh với 6 AI Agents chuyên nghiệp</p>
+            <div style="margin-top: 15px; font-size: 0.9rem; opacity: 0.9;">
+                📈 PricePredictor • 📰 TickerNews • 🌍 MarketNews • 💼 InvestmentExpert • ⚠️ RiskExpert • 🧠 GeminiAgent
+            </div>
         </div>
         
         <div class="main-content">
@@ -30,8 +33,8 @@
                             <input type="text" id="symbol" placeholder="VD: AAPL, VCB, TSLA..." />
                         </div>
                         <div class="input-wrapper">
-                            <label><i class="fas fa-comments"></i> Hỏi DuongMinh </label>
-                            <input type="text" id="query" placeholder="VD: analyze AAPL, predict VCB price..." />
+                            <label><i class="fas fa-comments"></i> Hỏi Gemini AI </label>
+                            <input type="text" id="query" placeholder="VD: Phân tích VCB có nên mua không? Dự đoán giá HPG?" />
                         </div>
                     </div>
                     
@@ -119,6 +122,9 @@
             <div id="result" class="result" style="display:none;"></div>
         </div>
     </div>
+    
+    <!-- Toast Notification -->
+    <div id="toast" class="toast"></div>
 
     <script src="/static/script.js"></script>
 </body>

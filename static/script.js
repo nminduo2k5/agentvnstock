@@ -1,6 +1,15 @@
 const API_BASE = 'http://localhost:8000';
 let selectedVNStock = '';
-let vnStocks = []; // Khởi tạo mảng rỗng, sẽ được điền từ API
+let vnStocks = [];
+let agentStatus = {
+    'PricePredictor': 'idle',
+    'TickerNews': 'idle', 
+    'MarketNews': 'idle',
+    'InvestmentExpert': 'idle',
+    'RiskExpert': 'idle',
+    'GeminiAgent': 'idle'
+};
+let realTimeInterval = null;
 
 function initVNStocks() {
     const container = document.getElementById('vnStocks');
@@ -90,7 +99,58 @@ function showLoading(message = 'Đang xử lý...') {
             <i class="fas fa-spinner fa-spin"></i>
             <h3>${message}</h3>
         </div>
+        <div class="agent-status-container">
+            ${Object.keys(agentStatus).map(agent => `
+                <div class="agent-status" id="status-${agent}">
+                    <span class="agent-name">${agent}</span>
+                    <span class="status-indicator idle">⏳</span>
+                </div>
+            `).join('')}
+        </div>
     `;
+}
+
+function updateAgentStatus(agent, status) {
+    agentStatus[agent] = status;
+    const statusEl = document.getElementById(`status-${agent}`);
+    if (statusEl) {
+        const indicator = statusEl.querySelector('.status-indicator');
+        indicator.className = `status-indicator ${status}`;
+        indicator.textContent = status === 'working' ? '🔄' : status === 'done' ? '✅' : '⏳';
+    }
+}
+
+function startRealTimeUpdates() {
+    if (realTimeInterval) clearInterval(realTimeInterval);
+    
+    realTimeInterval = setInterval(async () => {
+        const symbol = document.getElementById('symbol').value.trim();
+        if (symbol && selectedVNStock) {
+            try {
+                const response = await fetch(`${API_BASE}/vn-stock/${symbol}`);
+                if (response.ok) {
+                    const data = await response.json();
+                    updateMiniDisplay(data);
+                }
+            } catch (error) {
+                console.log('Real-time update failed:', error);
+            }
+        }
+    }, 30000); // Update every 30 seconds
+}
+
+function updateMiniDisplay(data) {
+    const miniDisplay = document.getElementById('mini-display');
+    if (miniDisplay && data.price) {
+        const changeClass = data.change_percent > 0 ? 'positive' : data.change_percent < 0 ? 'negative' : 'neutral';
+        miniDisplay.innerHTML = `
+            <div class="mini-stock-info">
+                <span class="mini-symbol">${data.symbol}</span>
+                <span class="mini-price ${changeClass}">${data.price.toLocaleString()} VND</span>
+                <span class="mini-change ${changeClass}">(${data.change_percent > 0 ? '+' : ''}${data.change_percent}%)</span>
+            </div>
+        `;
+    }
 }
 
 function formatSingleData(data) {
@@ -422,17 +482,37 @@ async function analyzeStock() {
         return;
     }
     
-    showLoading(`Đang phân tích toàn diện ${symbol}...`);
+    showLoading(`6 AI Agents đang phân tích ${symbol}...`);
+    
+    // Simulate agent working sequence
+    const agents = ['PricePredictor', 'RiskExpert', 'InvestmentExpert', 'TickerNews', 'MarketNews', 'GeminiAgent'];
+    
     try {
+        // Start analysis
+        for (let i = 0; i < agents.length; i++) {
+            updateAgentStatus(agents[i], 'working');
+            await new Promise(resolve => setTimeout(resolve, 500)); // Visual delay
+        }
+        
         const response = await fetch(`${API_BASE}/analyze?symbol=${symbol}`, {
             method: 'POST'
         });
+        
         if (!response.ok) {
             throw new Error(`HTTP error! status: ${response.status}`);
         }
+        
         const data = await response.json();
-        showResult(data, false, `Phân tích toàn diện ${symbol}`);
+        
+        // Mark all agents as done
+        agents.forEach(agent => updateAgentStatus(agent, 'done'));
+        
+        showResult(data, false, `✅ Phân tích hoàn tất: ${symbol}`);
+        startRealTimeUpdates();
+        
     } catch (error) {
+        // Reset agent status on error
+        Object.keys(agentStatus).forEach(agent => updateAgentStatus(agent, 'idle'));
         showResult({error: error.message}, true, 'Lỗi');
     }
 }
@@ -506,7 +586,9 @@ async function processQuery() {
         return;
     }
     
-    showLoading('Đang xử lý câu hỏi...');
+    showLoading('🧠 Gemini AI đang suy nghĩ...');
+    updateAgentStatus('GeminiAgent', 'working');
+    
     try {
         const response = await fetch(`${API_BASE}/query`, {
             method: 'POST',
@@ -522,8 +604,14 @@ async function processQuery() {
             throw new Error(`HTTP error! status: ${response.status}`);
         }
         const data = await response.json();
-        showResult(data, false, 'Kết quả truy vấn');
+        updateAgentStatus('GeminiAgent', 'done');
+        showResult(data, false, '🎓 Lời khuyên từ chuyên gia AI');
+        
+        // Clear query input
+        document.getElementById('query').value = '';
+        
     } catch (error) {
+        updateAgentStatus('GeminiAgent', 'idle');
         showResult({error: error.message}, true, 'Lỗi');
     }
 }
@@ -614,4 +702,43 @@ document.addEventListener('DOMContentLoaded', function() {
     document.getElementById('btn-vn-stock').addEventListener('click', getVNStock);
     document.getElementById('btn-vn-market').addEventListener('click', getVNMarket);
     document.getElementById('btn-vn-symbols').addEventListener('click', getVNSymbols);
+    
+    // Add mini display for real-time updates
+    const inputSection = document.querySelector('.input-section');
+    if (inputSection) {
+        const miniDisplay = document.createElement('div');
+        miniDisplay.id = 'mini-display';
+        miniDisplay.className = 'mini-display';
+        inputSection.appendChild(miniDisplay);
+    }
+    
+    // Auto-focus on symbol input
+    const symbolInput = document.getElementById('symbol');
+    if (symbolInput) {
+        symbolInput.focus();
+        
+        // Enter key support
+        symbolInput.addEventListener('keypress', function(e) {
+            if (e.key === 'Enter') {
+                analyzeStock();
+            }
+        });
+    }
+    
+    // Enter key support for query
+    const queryInput = document.getElementById('query');
+    if (queryInput) {
+        queryInput.addEventListener('keypress', function(e) {
+            if (e.key === 'Enter') {
+                processQuery();
+            }
+        });
+    }
+    
+    // Cleanup on page unload
+    window.addEventListener('beforeunload', function() {
+        if (realTimeInterval) {
+            clearInterval(realTimeInterval);
+        }
+    });
 });
