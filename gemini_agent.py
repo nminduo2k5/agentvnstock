@@ -5,19 +5,29 @@ from dotenv import load_dotenv
 load_dotenv()
 
 class GeminiAgent:
-    def __init__(self):
-        api_key = os.getenv('GOOGLE_API_KEY')
+    def __init__(self, api_key: str = None):
+        # Try API key from parameter first, then .env as fallback
         if not api_key:
-            raise ValueError("GOOGLE_API_KEY not found in .env file")
+            api_key = os.getenv('GOOGLE_API_KEY')
+        
+        if not api_key:
+            raise ValueError("API key required. Provide via parameter or GOOGLE_API_KEY env var")
         
         try:
             genai.configure(api_key=api_key)
             model_name = os.getenv('GEMINI_MODEL', 'gemini-1.5-flash')
             self.model = genai.GenerativeModel(model_name)
-            # Test the connection
-            self.model.generate_content("Hello")
+            self.api_key = api_key
         except Exception as e:
             raise ValueError(f"Failed to initialize Gemini: {str(e)}")
+    
+    def test_connection(self):
+        """Test API connection"""
+        try:
+            response = self.model.generate_content("Hello")
+            return True
+        except Exception as e:
+            raise ValueError(f"API key test failed: {str(e)}")
     
     def generate_expert_advice(self, query: str, symbol: str = None, data: dict = None):
         """Generate expert financial advice using Gemini"""

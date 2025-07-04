@@ -11,15 +11,32 @@ from src.data.vn_stock_api import VNStockAPI
 import asyncio
 
 class MainAgent:
-    def __init__(self, vn_api: VNStockAPI):
+    def __init__(self, vn_api: VNStockAPI, gemini_api_key: str = None):
         self.price_predictor = PricePredictor()
         self.ticker_news = TickerNews()
         self.market_news = MarketNews()
         self.investment_expert = InvestmentExpert()
         self.risk_expert = RiskExpert()
-        self.vn_api = vn_api # Sử dụng instance được truyền vào
+        self.vn_api = vn_api
         
-        self.gemini_agent = GeminiAgent()
+        # Initialize Gemini with API key if provided
+        self.gemini_agent = None
+        if gemini_api_key:
+            try:
+                self.gemini_agent = GeminiAgent(gemini_api_key)
+                self.gemini_agent.test_connection()
+            except Exception as e:
+                print(f"⚠️ Gemini initialization failed: {e}")
+    
+    def set_gemini_api_key(self, api_key: str):
+        """Set or update Gemini API key"""
+        try:
+            self.gemini_agent = GeminiAgent(api_key)
+            self.gemini_agent.test_connection()
+            return True
+        except Exception as e:
+            print(f"❌ Failed to set API key: {e}")
+            return False
     
     async def analyze_stock(self, symbol: str):
         """Phân tích toàn diện một mã cổ phiếu"""
@@ -85,9 +102,15 @@ class MainAgent:
                 data = {"price_prediction": prediction, "investment_analysis": analysis, "risk_assessment": risk_data}
         
         # Use Gemini to generate expert advice (run in thread pool since it's sync)
-        gemini_response = await run_in_threadpool(
-            self.gemini_agent.generate_expert_advice, query, symbol, data
-        )
+        if self.gemini_agent:
+            gemini_response = await run_in_threadpool(
+                self.gemini_agent.generate_expert_advice, query, symbol, data
+            )
+        else:
+            gemini_response = {
+                "expert_advice": "Gemini AI chưa được khởi tạo. Vui lòng nhập API key.",
+                "recommendations": ["Nhập Google API key để sử dụng Gemini AI"]
+            }
 
         # Backend chỉ trả về dữ liệu JSON, không tạo HTML.
         # Frontend sẽ chịu trách nhiệm render.

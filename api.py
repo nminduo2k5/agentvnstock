@@ -28,15 +28,33 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Initialize with error handling
+# Initialize with error handling (without Gemini API key)
 try:
     vn_api = VNStockAPI()
-    main_agent = MainAgent(vn_api=vn_api)
-    print("✅ API initialized successfully")
+    main_agent = MainAgent(vn_api=vn_api)  # No Gemini API key initially
+    print("✅ API initialized successfully (Gemini not configured)")
 except Exception as e:
     print(f"❌ Failed to initialize API: {e}")
     vn_api = None
     main_agent = None
+
+# API key management
+class APIKeyRequest(BaseModel):
+    api_key: str
+
+@app.post("/set-gemini-key")
+async def set_gemini_key(request: APIKeyRequest):
+    if not main_agent:
+        raise HTTPException(status_code=503, detail="Service not initialized")
+    
+    try:
+        success = main_agent.set_gemini_api_key(request.api_key)
+        if success:
+            return {"status": "success", "message": "Gemini API key set successfully"}
+        else:
+            raise HTTPException(status_code=400, detail="Invalid API key")
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
 
 # Mount static files
 app.mount("/static", StaticFiles(directory="static"), name="static")
@@ -63,7 +81,7 @@ async def health_check():
             "market_news": "ready",
             "investment_expert": "ready",
             "risk_expert": "ready",
-            "gemini_agent": "ready" if main_agent and hasattr(main_agent, 'gemini_agent') else "failed"
+            "gemini_agent": "ready" if main_agent and main_agent.gemini_agent else "not_configured"
         }
     }
 

@@ -41,7 +41,7 @@ agentvnstock/
 │   ├── market_news.py
 │   ├── investment_expert.py
 │   ├── risk_expert.py
-│   └── portfolio_manager.py
+│   
 ├── src/
 │   ├── data/              # Data layer
 │   │   └── vn_stock_api.py
@@ -72,25 +72,26 @@ cd agentvnstock
 pip install -r requirements.txt
 ```
 
-### 3. Cấu hình API Keys
+### 3. Cấu hình API Keys (Tùy chọn)
 
-Tạo file `.env`:
+Bạn có thể tạo file `.env` (không bắt buộc):
 
 ```env
+# Optional - có thể nhập trực tiếp trong app
 GOOGLE_API_KEY=your_gemini_api_key_here
 GEMINI_MODEL=gemini-1.5-flash
 ```
 
+**Hoặc nhập API key trực tiếp khi chạy app:**
+- Streamlit: Nhập API key ở sidebar
+- FastAPI: Sử dụng endpoint `/set-gemini-key`
+LINK:https://aistudio.google.com/apikey
 ### 4. Chạy ứng dụng
 
 #### Option 1: Streamlit App (Recommended)
 
 ```bash
-# Chạy với entry point mới
-streamlit run streamlit_app.py
-
-# Hoặc chạy trực tiếp
-streamlit run src/ui/dashboard.py
+streamlit run app.py
 ```
 
 #### Option 2: FastAPI Backend
@@ -101,12 +102,6 @@ python api.py
 
 # Test API
 python test_api.py
-```
-
-#### Option 3: Original Streamlit App
-
-```bash
-streamlit run app.py
 ```
 
 ## 📡 API Endpoints
@@ -234,11 +229,25 @@ python-multipart>=0.0.6
 ### Environment Variables
 
 ```env
-# Required
+# Optional - có thể nhập trực tiếp trong app
 GOOGLE_API_KEY=your_gemini_api_key
 
 # Optional
 GEMINI_MODEL=gemini-1.5-flash
+```
+
+### Dynamic API Key Setup
+
+**Streamlit:**
+- Mở sidebar
+- Nhập Google Gemini API key
+- Click "Cài đặt API Key"
+
+**FastAPI:**
+```bash
+curl -X POST "http://localhost:8000/set-gemini-key" \
+     -H "Content-Type: application/json" \
+     -d '{"api_key": "your_api_key_here"}'
 ```
 
 ### API Configuration

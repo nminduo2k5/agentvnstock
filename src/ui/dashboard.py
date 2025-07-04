@@ -29,7 +29,7 @@ class AITradingDashboard:
     
     def __init__(self):
         self.vn_api = VNStockAPI()
-        self.main_agent = MainAgent(self.vn_api)
+        self.main_agent = MainAgent(self.vn_api)  # Initialize without Gemini API key
         
         # Initialize session state
         if 'analysis_history' not in st.session_state:
@@ -70,6 +70,29 @@ class AITradingDashboard:
         with st.sidebar:
             st.header("⚙️ Cài đặt")
             
+            # Gemini API Key Input
+            st.subheader("🔑 Gemini API Key")
+            api_key = st.text_input(
+                "Google Gemini API Key:",
+                type="password",
+                help="Nhập API key từ Google AI Studio"
+            )
+            
+            gemini_status = "🟢" if self.main_agent.gemini_agent else "🔴"
+            
+            if api_key and st.button("⚙️ Cài đặt API Key"):
+                if self.main_agent.set_gemini_api_key(api_key):
+                    st.success("✅ API key đã được cài đặt!")
+                    st.rerun()
+                else:
+                    st.error("❌ API key không hợp lệ!")
+            
+            if not api_key and not self.main_agent.gemini_agent:
+                st.warning("⚠️ Vui lòng nhập API key để sử dụng Gemini!")
+                st.info("💡 Lấy API key miễn phí tại: https://makersuite.google.com/app/apikey")
+            
+            st.divider()
+            
             # 6 AI Agents Status
             st.subheader("🤖 6 AI Agents")
             agents_info = [
@@ -78,7 +101,7 @@ class AITradingDashboard:
                 {"name": "🌍 MarketNews", "desc": "Tin tức thị trường", "status": "🟢"},
                 {"name": "💼 InvestmentExpert", "desc": "Phân tích đầu tư", "status": "🟢"},
                 {"name": "⚠️ RiskExpert", "desc": "Quản lý rủi ro", "status": "🟢"},
-                {"name": "🧠 GeminiAgent", "desc": "AI Chatbot", "status": "🟢"}
+                {"name": "🧠 GeminiAgent", "desc": "AI Chatbot", "status": gemini_status}
             ]
             
             for agent in agents_info:
@@ -245,6 +268,10 @@ class AITradingDashboard:
             ask_button = st.button("🚀 Gửi câu hỏi", type="primary")
         
         if ask_button and user_question:
+            if not self.main_agent.gemini_agent:
+                st.error("❌ Vui lòng nhập Gemini API key ở sidebar trước!")
+                return
+                
             with st.spinner("🧠 Gemini AI đang suy nghĩ..."):
                 try:
                     # Run async function properly in Streamlit

@@ -15,7 +15,7 @@ st.set_page_config(
 @st.cache_resource
 def init_agents():
     vn_api = VNStockAPI()
-    main_agent = MainAgent(vn_api)
+    main_agent = MainAgent(vn_api)  # Initialize without Gemini API key
     return main_agent, vn_api
 
 main_agent, vn_api = init_agents()
@@ -28,6 +28,29 @@ st.markdown("**Hệ thống phân tích đầu tư chứng khoán với 6 AI Age
 with st.sidebar:
     st.header("⚙️ Cài đặt")
     
+    # Gemini API Key Input
+    st.subheader("🔑 Gemini API Key")
+    api_key = st.text_input(
+        "Google Gemini API Key:",
+        type="password",
+        help="Nhập API key từ Google AI Studio"
+    )
+    
+    gemini_status = "🟢" if main_agent.gemini_agent else "🔴"
+    
+    if api_key and st.button("⚙️ Cài đặt API Key"):
+        if main_agent.set_gemini_api_key(api_key):
+            st.success("✅ API key đã được cài đặt!")
+            st.rerun()
+        else:
+            st.error("❌ API key không hợp lệ!")
+    
+    if not api_key and not main_agent.gemini_agent:
+        st.warning("⚠️ Vui lòng nhập API key để sử dụng Gemini!")
+        st.info("💡 Lấy API key miễn phí tại: https://makersuite.google.com/app/apikey")
+    
+    st.divider()
+    
     # 6 AI Agents Status
     st.subheader("🤖 6 AI Agents")
     agents_info = [
@@ -36,7 +59,7 @@ with st.sidebar:
         {"name": "🌍 MarketNews", "desc": "Tin tức thị trường", "status": "🟢"},
         {"name": "💼 InvestmentExpert", "desc": "Phân tích đầu tư", "status": "🟢"},
         {"name": "⚠️ RiskExpert", "desc": "Quản lý rủi ro", "status": "🟢"},
-        {"name": "🧠 GeminiAgent", "desc": "AI Chatbot", "status": "🟢"}
+        {"name": "🧠 GeminiAgent", "desc": "AI Chatbot", "status": gemini_status}
     ]
     
     for agent in agents_info:
@@ -146,24 +169,27 @@ with tab2:
         ask_button = st.button("🚀 Gửi câu hỏi", type="primary")
     
     if ask_button and user_question:
-        with st.spinner("🧠 Gemini AI đang suy nghĩ..."):
-            loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(loop)
-            response = loop.run_until_complete(main_agent.process_query(user_question, symbol))
+        if not main_agent.gemini_agent:
+            st.error("❌ Vui lòng nhập Gemini API key ở sidebar trước!")
+        else:
+            with st.spinner("🧠 Gemini AI đang suy nghĩ..."):
+                loop = asyncio.new_event_loop()
+                asyncio.set_event_loop(loop)
+                response = loop.run_until_complete(main_agent.process_query(user_question, symbol))
             
-            if response.get('expert_advice'):
-                st.subheader("🎓 Lời khuyên từ chuyên gia AI")
-                st.markdown(response['expert_advice'])
-            
-            if response.get('recommendations'):
-                st.subheader("💡 Khuyến nghị cụ thể")
-                for i, rec in enumerate(response['recommendations'], 1):
-                    st.write(f"{i}. {rec}")
-            
-            # Show supporting data if available
-            if response.get('data'):
-                with st.expander("📊 Dữ liệu hỗ trợ phân tích"):
-                    st.json(response['data'])
+                if response.get('expert_advice'):
+                    st.subheader("🎓 Lời khuyên từ chuyên gia AI")
+                    st.markdown(response['expert_advice'])
+                
+                if response.get('recommendations'):
+                    st.subheader("💡 Khuyến nghị cụ thể")
+                    for i, rec in enumerate(response['recommendations'], 1):
+                        st.write(f"{i}. {rec}")
+                
+                # Show supporting data if available
+                if response.get('data'):
+                    with st.expander("📊 Dữ liệu hỗ trợ phân tích"):
+                        st.json(response['data'])
     
     # Sample questions
     st.subheader("💡 Câu hỏi mẫu")
