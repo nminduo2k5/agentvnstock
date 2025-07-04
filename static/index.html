@@ -1,0 +1,125 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>🤖 AI Stock Analysis Vietnam</title>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="/static/styles.css">
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1><i class="fas fa-robot"></i> AI Stock Analysis Vietnam</h1>
+            <p>Hệ thống phân tích cổ phiếu thông minh với 6 AI Agents chuyên nghiệp</p>
+        </div>
+        
+        <div class="main-content">
+            <div class="tabs">
+                <button class="tab active" data-tab="analysis"><i class="fas fa-chart-line"></i> Phân tích cổ phiếu</button>
+                <button class="tab" data-tab="vn-market"><i class="fas fa-flag"></i> Thị trường VN</button>
+                <button class="tab" data-tab="features"><i class="fas fa-star"></i> Tính năng</button>
+            </div>
+            
+            <!-- Tab Phân tích cổ phiếu -->
+            <div id="analysis" class="tab-content active">
+                <div class="input-section">
+                    <div class="input-group">
+                        <div class="input-wrapper">
+                            <label><i class="fas fa-search"></i> Mã cổ phiếu</label>
+                            <input type="text" id="symbol" placeholder="VD: AAPL, VCB, TSLA..." />
+                        </div>
+                        <div class="input-wrapper">
+                            <label><i class="fas fa-comments"></i> Hỏi DuongMinh </label>
+                            <input type="text" id="query" placeholder="VD: analyze AAPL, predict VCB price..." />
+                        </div>
+                    </div>
+                    
+                    <div class="btn-group">
+                        <button id="btn-analyze" class="btn-primary">
+                            <i class="fas fa-chart-bar"></i> Phân tích toàn diện
+                        </button>
+                        <button id="btn-predict" class="btn-success">
+                            <i class="fas fa-crystal-ball"></i> Dự đoán giá
+                        </button>
+                        <button id="btn-news" class="btn-warning">
+                            <i class="fas fa-newspaper"></i> Tin tức
+                        </button>
+                        <button id="btn-risk" class="btn-danger">
+                            <i class="fas fa-exclamation-triangle"></i> Đánh giá rủi ro
+                        </button>
+                        <button id="btn-query" class="btn-secondary">
+                            <i class="fas fa-magic"></i> Gửi câu hỏi
+                        </button>
+                        <button id="btn-market" class="btn-secondary">
+                            <i class="fas fa-globe"></i> Tin tức thị trường
+                        </button>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Tab Thị trường VN -->
+            <div id="vn-market" class="tab-content">
+                <div class="input-section">
+                    <h3><i class="fas fa-flag"></i> Cổ phiếu Việt Nam</h3>
+                    <p>Chọn mã cổ phiếu VN để phân tích:</p>
+                    
+                    <div class="vn-stocks" id="vnStocks"></div>
+                    
+                    <div class="btn-group">
+                        <button id="btn-vn-stock" class="btn-primary">
+                            <i class="fas fa-chart-line"></i> Phân tích cổ phiếu VN
+                        </button>
+                        <button id="btn-vn-market" class="btn-success">
+                            <i class="fas fa-building"></i> Tổng quan thị trường VN
+                        </button>
+                        <button id="btn-vn-symbols" class="btn-warning">
+                            <i class="fas fa-list"></i> Danh sách mã cổ phiếu
+                        </button>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Tab Tính năng -->
+            <div id="features" class="tab-content">
+                <div class="features">
+                    <div class="feature-card">
+                        <div class="feature-icon"><i class="fas fa-robot"></i></div>
+                        <div class="feature-title">6 AI Agents</div>
+                        <div class="feature-desc">Price Predictor, News Analyzer, Investment Expert, Risk Manager, Market News, Main Coordinator</div>
+                    </div>
+                    <div class="feature-card">
+                        <div class="feature-icon"><i class="fas fa-chart-line"></i></div>
+                        <div class="feature-title">Phân tích kỹ thuật</div>
+                        <div class="feature-desc">Moving Average, RSI, Volatility, Beta, Max Drawdown</div>
+                    </div>
+                    <div class="feature-card">
+                        <div class="feature-icon"><i class="fas fa-newspaper"></i></div>
+                        <div class="feature-title">Tin tức real-time</div>
+                        <div class="feature-desc">Tin tức từ Yahoo Finance và các nguồn uy tín</div>
+                    </div>
+                    <div class="feature-card">
+                        <div class="feature-icon"><i class="fas fa-flag"></i></div>
+                        <div class="feature-title">Thị trường VN</div>
+                        <div class="feature-desc">Hỗ trợ 18+ mã cổ phiếu VN phổ biến</div>
+                    </div>
+                    <div class="feature-card">
+                        <div class="feature-icon"><i class="fas fa-shield-alt"></i></div>
+                        <div class="feature-title">Quản lý rủi ro</div>
+                        <div class="feature-desc">Đánh giá rủi ro HIGH/MEDIUM/LOW</div>
+                    </div>
+                    <div class="feature-card">
+                        <div class="feature-icon"><i class="fas fa-magic"></i></div>
+                        <div class="feature-title">Truy vấn tự nhiên</div>
+                        <div class="feature-desc">Hỏi bằng tiếng Việt hoặc tiếng Anh</div>
+                    </div>
+                </div>
+            </div>
+            
+            <div id="result" class="result" style="display:none;"></div>
+        </div>
+    </div>
+
+    <script src="/static/script.js"></script>
+</body>
+</html>
