@@ -18,6 +18,24 @@
         </div>
         
         <div class="main-content">
+            <!-- Gemini API Key Section -->
+            <div class="api-key-section">
+                <div class="api-key-card">
+                    <h3><i class="fas fa-key"></i> Cài đặt Gemini API Key</h3>
+                    <div class="api-key-input">
+                        <input type="password" id="geminiApiKey" placeholder="Nhập Google Gemini API Key" />
+                        <button id="btn-set-api-key" class="btn-primary">
+                            <i class="fas fa-save"></i> Cài đặt
+                        </button>
+                    </div>
+                    <div id="api-key-status" class="api-key-status"></div>
+                    <p class="api-key-help">
+                        <i class="fas fa-info-circle"></i> 
+                        Lấy API key miễn phí tại: <a href="https://makersuite.google.com/app/apikey" target="_blank">Google AI Studio</a>
+                    </p>
+                </div>
+            </div>
+            
             <div class="tabs">
                 <button class="tab active" data-tab="analysis"><i class="fas fa-chart-line"></i> Phân tích cổ phiếu</button>
                 <button class="tab" data-tab="vn-market"><i class="fas fa-flag"></i> Thị trường VN</button>

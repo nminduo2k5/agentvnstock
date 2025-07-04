@@ -65,9 +65,12 @@ class QueryRequest(BaseModel):
 
 @app.on_event("startup")
 async def startup_event():
-    print("🚀 Starting Duong Trading Vietnam API...")
+    print("🚀 Starting AI Trading Team Vietnam API...")
     print(f"📊 VN API Status: {'✅ Ready' if vn_api else '❌ Failed'}")
     print(f"🤖 Main Agent Status: {'✅ Ready' if main_agent else '❌ Failed'}")
+    print(f"🧠 Gemini Status: {'✅ Ready' if main_agent and main_agent.gemini_agent else '🔴 Not Configured'}")
+    print("📚 API Docs: http://127.0.0.1:8000/docs")
+    print("🔑 Set Gemini Key: POST /set-gemini-key")
 
 @app.get("/health")
 async def health_check():

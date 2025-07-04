@@ -40,6 +40,9 @@ class MainAgent:
     
     async def analyze_stock(self, symbol: str):
         """Phân tích toàn diện một mã cổ phiếu"""
+        if not symbol:
+            return {"error": "Vui lòng chọn mã cổ phiếu"}
+            
         tasks = {}
 
         # Check if VN stock first
@@ -86,7 +89,7 @@ class MainAgent:
         
         # Get relevant data first
         data = None
-        if symbol and symbol.strip():
+        if symbol and symbol.strip() and symbol != "None":
             if self.vn_api.is_vn_stock(symbol.upper()):
                 # Chạy song song các tác vụ
                 vn_data_task = self.vn_api.get_stock_data(symbol)

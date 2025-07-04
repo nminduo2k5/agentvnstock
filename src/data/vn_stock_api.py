@@ -87,12 +87,17 @@ class VNStockAPI:
     
     def is_vn_stock(self, symbol: str) -> bool:
         """Kiểm tra xem một mã có phải là cổ phiếu VN được hỗ trợ không"""
+        if not symbol:
+            return False
         return symbol.upper() in self.vn_stocks
 
     async def get_stock_data(self, symbol: str, force_refresh: bool = False) -> Optional[VNStockData]:
         """
         Lấy stock data cho một symbol sử dụng vnstock
         """
+        if not symbol:
+            return None
+            
         try:
             cache_key = f"stock_{symbol}"
             if not force_refresh and self._is_cache_valid(cache_key):

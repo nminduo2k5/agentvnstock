@@ -10,6 +10,7 @@ let agentStatus = {
     'GeminiAgent': 'idle'
 };
 let realTimeInterval = null;
+let apiKeyStatus = false;
 
 function initVNStocks() {
     const container = document.getElementById('vnStocks');
@@ -586,6 +587,11 @@ async function processQuery() {
         return;
     }
     
+    if (!apiKeyStatus) {
+        alert('⚠️ Vui lòng cài đặt Gemini API key trước khi sử dụng chatbot');
+        return;
+    }
+    
     showLoading('🧠 Gemini AI đang suy nghĩ...');
     updateAgentStatus('GeminiAgent', 'working');
     
@@ -679,6 +685,90 @@ async function getVNSymbols() {
     }
 }
 
+// API Key Management Functions
+function setApiKey() {
+    const apiKey = document.getElementById('apiKey').value.trim();
+    if (!apiKey) {
+        alert('Vui lòng nhập API key');
+        return;
+    }
+    
+    fetch(`${API_BASE}/set-gemini-key`, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ api_key: apiKey })
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.status === 'success') {
+            apiKeyStatus = true;
+            updateApiKeyStatus(true);
+            alert('✅ API key đã được cài đặt thành công!');
+        } else {
+            throw new Error(data.message || 'Lỗi không xác định');
+        }
+    })
+    .catch(error => {
+        apiKeyStatus = false;
+        updateApiKeyStatus(false);
+        alert('❌ Lỗi: ' + error.message);
+    });
+}
+
+function validateApiKey() {
+    return fetch(`${API_BASE}/validate-api-key`)
+        .then(response => response.json())
+        .then(data => {
+            apiKeyStatus = data.valid;
+            updateApiKeyStatus(data.valid);
+            return data.valid;
+        })
+        .catch(() => {
+            apiKeyStatus = false;
+            updateApiKeyStatus(false);
+            return false;
+        });
+}
+
+function updateApiKeyStatus(isValid) {
+    const statusEl = document.getElementById('apiKeyStatus');
+    const geminiButtons = document.querySelectorAll('[data-requires-api]');
+    
+    if (statusEl) {
+        statusEl.textContent = isValid ? '✅ API Key hợp lệ' : '❌ Chưa cài đặt API Key';
+        statusEl.className = isValid ? 'api-status valid' : 'api-status invalid';
+    }
+    
+    geminiButtons.forEach(btn => {
+        btn.disabled = !isValid;
+        if (!isValid) {
+            btn.title = 'Cần cài đặt Gemini API key trước';
+        } else {
+            btn.title = '';
+        }
+    });
+}
+
+function clearApiKey() {
+    if (confirm('Bạn có chắc muốn xóa API key?')) {
+        fetch(`${API_BASE}/clear-api-key`, { method: 'POST' })
+            .then(response => response.json())
+            .then(data => {
+                if (data.status === 'success') {
+                    apiKeyStatus = false;
+                    updateApiKeyStatus(false);
+                    document.getElementById('apiKey').value = '';
+                    alert('🗑️ API key đã được xóa');
+                }
+            })
+            .catch(error => {
+                alert('Lỗi khi xóa API key: ' + error.message);
+            });
+    }
+}
+
 // Initialize on page load
 document.addEventListener('DOMContentLoaded', function() {
     // Tải danh sách cổ phiếu VN động từ API
@@ -712,6 +802,20 @@ document.addEventListener('DOMContentLoaded', function() {
         inputSection.appendChild(miniDisplay);
     }
     
+    // API Key management
+    const apiKeyBtn = document.getElementById('btn-set-api-key');
+    const clearApiKeyBtn = document.getElementById('btn-clear-api-key');
+    
+    if (apiKeyBtn) {
+        apiKeyBtn.addEventListener('click', setApiKey);
+    }
+    if (clearApiKeyBtn) {
+        clearApiKeyBtn.addEventListener('click', clearApiKey);
+    }
+    
+    // Validate API key on load
+    validateApiKey();
+    
     // Auto-focus on symbol input
     const symbolInput = document.getElementById('symbol');
     if (symbolInput) {
@@ -721,6 +825,16 @@ document.addEventListener('DOMContentLoaded', function() {
         symbolInput.addEventListener('keypress', function(e) {
             if (e.key === 'Enter') {
                 analyzeStock();
+            }
+        });
+    }
+    
+    // Enter key support for API key
+    const apiKeyInput = document.getElementById('apiKey');
+    if (apiKeyInput) {
+        apiKeyInput.addEventListener('keypress', function(e) {
+            if (e.key === 'Enter') {
+                setApiKey();
             }
         });
     }
