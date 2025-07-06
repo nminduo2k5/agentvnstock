@@ -11,22 +11,54 @@ class RiskExpert:
             vn_stocks = ['VCB', 'BID', 'CTG', 'TCB', 'ACB', 'VIC', 'VHM', 'VRE', 'DXG', 'MSN', 'MWG', 'VNM', 'SAB', 'HPG', 'GAS', 'PLX', 'FPT']
             
             if symbol.upper() in vn_stocks:
-                # Mock risk assessment for VN stocks
-                import random
+                from vnstock import Vnstock
+                from datetime import datetime, timedelta
                 
-                # VN market typically has higher volatility
-                volatility = random.uniform(25, 45)  # 25-45% annual volatility
-                max_drawdown = random.uniform(-25, -10)  # -25% to -10%
+                stock_obj = Vnstock().stock(symbol=symbol, source='VCI')
                 
-                if volatility > 35:
+                # Lấy dữ liệu lịch sử 1 năm
+                end_date = datetime.now().strftime('%Y-%m-%d')
+                start_date = (datetime.now() - timedelta(days=365)).strftime('%Y-%m-%d')
+                
+                hist_data = stock_obj.quote.history(start=start_date, end=end_date, interval='1D')
+                
+                if hist_data.empty:
+                    return {"error": f"No data found for {symbol}"}
+                
+                # Tính toán volatility
+                returns = hist_data['close'].pct_change().dropna()
+                volatility = returns.std() * np.sqrt(252) * 100  # Annualized volatility %
+                
+                # Tính max drawdown
+                cumulative = (1 + returns).cumprod()
+                running_max = cumulative.expanding().max()
+                drawdown = (cumulative - running_max) / running_max
+                max_drawdown = drawdown.min() * 100
+                
+                # Đánh giá rủi ro
+                if volatility > 40:
                     risk_level = "HIGH"
                 elif volatility > 25:
                     risk_level = "MEDIUM"
                 else:
                     risk_level = "LOW"
                 
-                # Beta vs VN-Index (mock)
-                beta = random.uniform(0.7, 1.3)
+                # Beta vs VN-Index (simplified)
+                try:
+                    vnindex_obj = Vnstock().stock(symbol='VNINDEX', source='VCI')
+                    vnindex_data = vnindex_obj.quote.history(start=start_date, end=end_date, interval='1D')
+                    vnindex_returns = vnindex_data['close'].pct_change().dropna()
+                    
+                    # Align dates
+                    common_dates = returns.index.intersection(vnindex_returns.index)
+                    if len(common_dates) > 50:
+                        stock_aligned = returns.loc[common_dates]
+                        vnindex_aligned = vnindex_returns.loc[common_dates]
+                        beta = np.cov(stock_aligned, vnindex_aligned)[0, 1] / np.var(vnindex_aligned)
+                    else:
+                        beta = 1.0
+                except:
+                    beta = 1.0
                 
                 return {
                     "symbol": symbol,
@@ -36,7 +68,8 @@ class RiskExpert:
                     "beta": round(beta, 2),
                     "risk_score": round(volatility / 10, 1),
                     "market": "Vietnam",
-                    "benchmark": "VN-Index"
+                    "benchmark": "VN-Index",
+                    "data_source": "VCI_Real"
                 }
             
             # US/International stocks

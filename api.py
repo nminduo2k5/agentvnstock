@@ -42,6 +42,10 @@ except Exception as e:
 class APIKeyRequest(BaseModel):
     api_key: str
 
+class CrewAIKeyRequest(BaseModel):
+    gemini_api_key: str
+    serper_api_key: str = None
+
 @app.post("/set-gemini-key")
 async def set_gemini_key(request: APIKeyRequest):
     if not main_agent:
@@ -53,6 +57,28 @@ async def set_gemini_key(request: APIKeyRequest):
             return {"status": "success", "message": "Gemini API key set successfully"}
         else:
             raise HTTPException(status_code=400, detail="Invalid API key")
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+@app.post("/set-crewai-keys")
+async def set_crewai_keys(request: CrewAIKeyRequest):
+    """Set CrewAI keys for real news collection"""
+    if not main_agent:
+        raise HTTPException(status_code=503, detail="Service not initialized")
+    
+    try:
+        success = main_agent.set_crewai_keys(request.gemini_api_key, request.serper_api_key)
+        if success:
+            return {
+                "status": "success", 
+                "message": "CrewAI integration enabled for real news collection",
+                "features": ["Real stock news", "Market overview news", "Sentiment analysis"]
+            }
+        else:
+            return {
+                "status": "partial",
+                "message": "CrewAI not available, using fallback methods"
+            }
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
 
@@ -71,6 +97,8 @@ async def startup_event():
     print(f"🧠 Gemini Status: {'✅ Ready' if main_agent and main_agent.gemini_agent else '🔴 Not Configured'}")
     print("📚 API Docs: http://127.0.0.1:8000/docs")
     print("🔑 Set Gemini Key: POST /set-gemini-key")
+    print("🤖 Set CrewAI Keys: POST /set-crewai-keys")
+    print("📰 CrewAI enables real news collection from Vietnamese sources")
 
 @app.get("/health")
 async def health_check():
@@ -84,7 +112,12 @@ async def health_check():
             "market_news": "ready",
             "investment_expert": "ready",
             "risk_expert": "ready",
-            "gemini_agent": "ready" if main_agent and main_agent.gemini_agent else "not_configured"
+            "gemini_agent": "ready" if main_agent and main_agent.gemini_agent else "not_configured",
+            "crewai_integration": "ready" if main_agent and hasattr(main_agent.vn_api, 'crewai_collector') and main_agent.vn_api.crewai_collector and main_agent.vn_api.crewai_collector.enabled else "not_configured"
+        },
+        "features": {
+            "real_news_collection": "enabled" if main_agent and hasattr(main_agent.vn_api, 'crewai_collector') and main_agent.vn_api.crewai_collector and main_agent.vn_api.crewai_collector.enabled else "disabled",
+            "market_sentiment": "enhanced" if main_agent and hasattr(main_agent.vn_api, 'crewai_collector') and main_agent.vn_api.crewai_collector and main_agent.vn_api.crewai_collector.enabled else "basic"
         }
     }
 
@@ -191,7 +224,7 @@ async def get_vn_symbols():
     if not vn_api:
         raise HTTPException(status_code=503, detail="Service not initialized")
     try:
-        result = vn_api.get_available_symbols()
+        result = await vn_api.get_available_symbols()
         return result
     except Exception as e:
         print(f"Error in get_vn_symbols: {e}")

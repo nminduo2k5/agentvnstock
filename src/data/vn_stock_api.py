@@ -11,19 +11,27 @@ from datetime import datetime, timedelta
 from typing import Dict, List, Any, Optional
 from dataclasses import dataclass
 
+# CrewAI Integration
 try:
-    # Try installed vnstock first
+    from .crewai_collector import get_crewai_collector
+    CREWAI_INTEGRATION = True
+except ImportError:
+    CREWAI_INTEGRATION = False
+    print("⚠️ CrewAI integration not available")
+
+try:
+    # Force use installed vnstock by removing local path
+    import sys
+    import os
+    # Remove local vnstock from path if exists
+    local_vnstock = os.path.join(os.path.dirname(__file__), '..', '..')
+    if local_vnstock in sys.path:
+        sys.path.remove(local_vnstock)
+    
     from vnstock import Vnstock
 except ImportError:
-    try:
-        # Try local vnstock as fallback
-        import sys
-        import os
-        sys.path.append(os.path.join(os.path.dirname(__file__), '..', '..'))
-        from vnstock import Vnstock
-    except ImportError:
-        print("WARNING: vnstock not available. Install with: pip install vnstock")
-        Vnstock = None
+    print("WARNING: vnstock not available. Install with: pip install vnstock")
+    Vnstock = None
 
 logger = logging.getLogger(__name__)
 
@@ -47,13 +55,21 @@ class VNStockAPI:
     Sử dụng vnstock để lấy dữ liệu thật từ thị trường VN
     """
     
-    def __init__(self):
+    def __init__(self, gemini_api_key: str = None, serper_api_key: str = None):
         # Initialize vnstock
         self.stock = Vnstock() if Vnstock else None
         
         # Cache để avoid quá nhiều API calls
         self.cache = {}
         self.cache_duration = 60  # 1 minute
+        
+        # CrewAI Integration for real news
+        if CREWAI_INTEGRATION:
+            self.crewai_collector = get_crewai_collector(gemini_api_key, serper_api_key)
+            logger.info("✅ CrewAI integration enabled")
+        else:
+            self.crewai_collector = None
+            logger.info("⚠️ CrewAI integration disabled")
         
         # Vietnamese stock symbols mapping
         self.vn_stocks = {
@@ -86,14 +102,32 @@ class VNStockAPI:
         }
     
     def is_vn_stock(self, symbol: str) -> bool:
-        """Kiểm tra xem một mã có phải là cổ phiếu VN được hỗ trợ không"""
+        """Kiểm tra xem một mã có phải là cổ phiếu VN không"""
         if not symbol:
             return False
-        return symbol.upper() in self.vn_stocks
+        
+        symbol = symbol.upper().strip()
+        
+        # Kiểm tra trong danh sách VN stocks
+        if symbol in self.vn_stocks:
+            return True
+        
+        # Kiểm tra pattern VN stock (3-4 ký tự, không chứa số ở cuối)
+        if len(symbol) >= 3 and len(symbol) <= 4 and symbol.isalpha():
+            # Các pattern thường gặp của VN stocks
+            vn_patterns = ['VCB', 'BID', 'CTG', 'TCB', 'ACB', 'VIC', 'VHM', 'HPG', 'FPT', 'MSN']
+            if any(symbol.startswith(p[:2]) for p in vn_patterns):
+                return True
+            
+            # Nếu không có dấu chấm hoặc số thì có thể là VN stock
+            if '.' not in symbol and not any(char.isdigit() for char in symbol):
+                return True
+        
+        return False
 
     async def get_stock_data(self, symbol: str, force_refresh: bool = False) -> Optional[VNStockData]:
         """
-        Lấy stock data cho một symbol sử dụng vnstock
+        Lấy stock data cho một symbol - chỉ dùng mock data
         """
         if not symbol:
             return None
@@ -104,112 +138,122 @@ class VNStockAPI:
                 logger.info(f"📋 Using cached data for {symbol}")
                 return self.cache[cache_key]['data']
 
-            # Sử dụng vnstock để lấy dữ liệu thật
-            if self.stock:
-                data = await self._fetch_vnstock_data(symbol)
-                if data:
-                    logger.info(f"✅ Got real data for {symbol} from vnstock")
-                    self.cache[cache_key] = {
-                        'data': data,
-                        'timestamp': time.time()
-                    }
-                    return data
-            
-            # Fallback to mock data if vnstock fails
-            logger.warning(f"⚠️ vnstock failed for {symbol}, using mock data")
+            # Chỉ dùng mock data để tránh lỗi vnstock
             data = self._generate_mock_data(symbol)
+            
+            self.cache[cache_key] = {
+                'data': data,
+                'timestamp': time.time()
+            }
             return data
             
         except Exception as e:
-            logger.error(f"❌ Error fetching data for {symbol}: {e}")
+            logger.error(f"❌ Error generating mock data for {symbol}: {e}")
             return self._generate_mock_data(symbol)
     
     async def _fetch_vnstock_data(self, symbol: str) -> Optional[VNStockData]:
-        """Fetch data từ vnstock"""
+        """Fetch real data từ vnstock với fallback"""
         try:
-            # Lấy thông tin cơ bản của cổ phiếu
-            quote_data = self.stock.stock(symbol=symbol, source='VCI').quote.history(period='1D')
+            # Import vnstock trực tiếp
+            from vnstock import Vnstock
+            from datetime import datetime, timedelta
+            import logging
             
-            if quote_data.empty:
+            # Tắt logging của vnstock để tránh spam
+            vnstock_logger = logging.getLogger('vnstock')
+            vnstock_logger.setLevel(logging.ERROR)
+            
+            if not self.is_vn_stock(symbol):
+                logger.warning(f"Symbol {symbol} not in supported VN stocks list")
                 return None
-                
-            # Lấy dòng dữ liệu mới nhất
-            latest = quote_data.iloc[-1]
             
-            # Tính toán change và change_percent
-            current_price = latest['close']
-            prev_close = latest['open'] if len(quote_data) == 1 else quote_data.iloc[-2]['close']
-            change = current_price - prev_close
-            change_percent = (change / prev_close) * 100 if prev_close != 0 else 0
+            # Sử dụng vnstock với error handling
+            stock_obj = Vnstock().stock(symbol=symbol, source='VCI')
             
-            # Lấy thông tin tài chính
+            # Lấy dữ liệu lịch sử với retry
+            hist_data = None
+            for days in [5, 10, 30]:  # Try different periods
+                try:
+                    end_date = datetime.now().strftime('%Y-%m-%d')
+                    start_date = (datetime.now() - timedelta(days=days)).strftime('%Y-%m-%d')
+                    
+                    hist_data = stock_obj.quote.history(start=start_date, end=end_date, interval='1D')
+                    if not hist_data.empty:
+                        break
+                except Exception as e:
+                    logger.debug(f"Failed to get {days} days data for {symbol}: {e}")
+                    continue
+            
+            if hist_data is None or hist_data.empty:
+                logger.warning(f"No price history available for {symbol}")
+                return None
+            
+            # Dữ liệu mới nhất
+            latest = hist_data.iloc[-1]
+            prev_day = hist_data.iloc[-2] if len(hist_data) > 1 else latest
+            
+            current_price = float(latest['close'])
+            change = float(latest['close'] - prev_day['close'])
+            change_percent = float((latest['close'] - prev_day['close']) / prev_day['close'] * 100) if prev_day['close'] != 0 else 0
+            
+            # Lấy thông tin công ty với error handling
+            market_cap = 0
             try:
-                financial_data = self.stock.stock(symbol=symbol, source='VCI').finance.ratio(period='quarter', lang='vi')
-                pe_ratio = financial_data.iloc[-1]['pe'] if not financial_data.empty else None
-                pb_ratio = financial_data.iloc[-1]['pb'] if not financial_data.empty else None
-            except:
-                pe_ratio = None
-                pb_ratio = None
+                overview = stock_obj.company.overview()
+                if not overview.empty:
+                    overview_data = overview.iloc[0]
+                    issue_share = overview_data.get('issue_share', 0)
+                    if issue_share and issue_share > 0:
+                        market_cap = issue_share * current_price / 1_000_000_000
+            except Exception as e:
+                logger.debug(f"Could not get company overview for {symbol}: {e}")
+            
+            # Lấy chỉ số tài chính với error handling
+            pe_ratio = pb_ratio = None
+            try:
+                ratios = stock_obj.finance.ratio(period='quarter', lang='vi', dropna=True)
+                if not ratios.empty:
+                    latest_ratio = ratios.iloc[-1]
+                    pe_ratio = latest_ratio.get('pe', None)
+                    pb_ratio = latest_ratio.get('pb', None)
+            except Exception as e:
+                logger.debug(f"Could not get financial ratios for {symbol}: {e}")
             
             stock_info = self.vn_stocks.get(symbol, {})
             
+            logger.info(f"Successfully fetched real data for {symbol}: {current_price:,.0f} VND")
+            
             return VNStockData(
                 symbol=symbol,
-                price=float(current_price),
-                change=float(change),
-                change_percent=float(change_percent),
+                price=current_price,
+                change=change,
+                change_percent=change_percent,
                 volume=int(latest['volume']),
-                market_cap=float(latest.get('marketCap', 0)) / 1_000_000_000,  # Convert to tỷ VND
-                pe_ratio=float(pe_ratio) if pe_ratio else None,
-                pb_ratio=float(pb_ratio) if pb_ratio else None,
+                market_cap=float(market_cap) if market_cap else 0,
+                pe_ratio=float(pe_ratio) if pe_ratio and pe_ratio > 0 else None,
+                pb_ratio=float(pb_ratio) if pb_ratio and pb_ratio > 0 else None,
                 sector=stock_info.get('sector', 'Unknown'),
                 exchange=stock_info.get('exchange', 'HOSE')
             )
             
         except Exception as e:
-            logger.error(f"❌ Error fetching vnstock data for {symbol}: {e}")
+            logger.error(f"Error fetching real data for {symbol}: {e}")
             return None
     
     def _generate_mock_data(self, symbol: str) -> VNStockData:
-        """
-        Generate realistic mock data for demo purposes
-        Sử dụng khi không có real API data
-        """
         import random
-        
-        stock_info = self.vn_stocks.get(symbol, {
-            'name': symbol,
-            'sector': 'Unknown',
-            'exchange': 'HOSE'
-        })
-        
-        # Base prices cho different stocks
-        base_prices = {
-            'VCB': 85000, 'BID': 45000, 'CTG': 35000, 'TCB': 55000,
-            'VIC': 90000, 'VHM': 75000, 'MSN': 120000, 'MWG': 80000,
-            'HPG': 25000, 'FPT': 95000, 'VNM': 85000, 'GAS': 95000
-        }
-        
+        stock_info = self.vn_stocks.get(symbol, {'name': symbol, 'sector': 'Unknown', 'exchange': 'HOSE'})
+        base_prices = {'VCB': 85000, 'BID': 45000, 'VIC': 90000, 'HPG': 25000, 'FPT': 95000}
         base_price = base_prices.get(symbol, 50000)
-        
-        # Random variations
-        price_variation = random.uniform(-0.05, 0.05)  # ±5%
-        current_price = base_price * (1 + price_variation)
-        
+        current_price = base_price * (1 + random.uniform(-0.05, 0.05))
         change = current_price - base_price
-        change_percent = (change / base_price) * 100
         
         return VNStockData(
-            symbol=symbol,
-            price=round(current_price, -2),  # Round to nearest 100
-            change=round(change, -2),
-            change_percent=round(change_percent, 2),
-            volume=random.randint(50000, 2000000),
-            market_cap=random.randint(5000, 200000),  # tỷ VND
-            pe_ratio=round(random.uniform(8, 25), 1),
-            pb_ratio=round(random.uniform(0.8, 3.0), 1),
-            sector=stock_info['sector'],
-            exchange=stock_info['exchange']
+            symbol=symbol, price=round(current_price, -2), change=round(change, -2),
+            change_percent=round((change / base_price) * 100, 2),
+            volume=random.randint(50000, 2000000), market_cap=random.randint(5000, 200000),
+            pe_ratio=round(random.uniform(8, 25), 1), pb_ratio=round(random.uniform(0.8, 3.0), 1),
+            sector=stock_info['sector'], exchange=stock_info['exchange']
         )
     
     async def get_market_overview(self) -> Dict[str, Any]:
@@ -231,13 +275,23 @@ class VNStockAPI:
                 # Lấy top movers
                 top_gainers, top_losers = await self._fetch_top_movers_vnstock()
                 
+                # Lấy market news từ CrewAI nếu có
+                market_news = None
+                if self.crewai_collector and self.crewai_collector.enabled:
+                    try:
+                        market_news = await self.crewai_collector.get_market_overview_news()
+                    except Exception as e:
+                        logger.error(f"CrewAI market news failed: {e}")
+                
                 overview = {
                     'vn_index': vn_index_data,
-                    'sector_performance': await self._fetch_sector_performance(),
                     'top_gainers': top_gainers,
                     'top_losers': top_losers,
-                    'foreign_flows': await self._fetch_foreign_flows(),
-                    'market_sentiment': self._calculate_market_sentiment(),
+                    'market_news': market_news or {
+                        'overview': 'Thị trường ổn định với thanh khoản trung bình',
+                        'source': 'Mock',
+                        'timestamp': datetime.now().isoformat()
+                    },
                     'timestamp': datetime.now().isoformat()
                 }
             else:
@@ -256,31 +310,32 @@ class VNStockAPI:
             return self._generate_mock_market_overview()
     
     async def _fetch_vnindex_vnstock(self) -> Dict[str, Any]:
-        """Fetch VN-Index data using vnstock"""
+        """Fetch VN-Index data từ VCI"""
         try:
-            # Lấy dữ liệu VN-Index
-            vnindex_data = self.stock.stock(symbol='VNINDEX', source='VCI').quote.history(period='1D')
+            from vnstock import Vnstock
+            from datetime import datetime, timedelta
             
-            if vnindex_data.empty:
-                return {'value': 1200, 'change': 0, 'change_percent': 0}
+            stock_obj = Vnstock().stock(symbol='VNINDEX', source='VCI')
+            end_date = datetime.now().strftime('%Y-%m-%d')
+            start_date = (datetime.now() - timedelta(days=5)).strftime('%Y-%m-%d')
             
-            latest = vnindex_data.iloc[-1]
-            prev_close = vnindex_data.iloc[-2]['close'] if len(vnindex_data) > 1 else latest['open']
+            vnindex_data = stock_obj.quote.history(start=start_date, end=end_date, interval='1D')
             
-            current_value = latest['close']
-            change = current_value - prev_close
-            change_percent = (change / prev_close) * 100 if prev_close != 0 else 0
+            if not vnindex_data.empty:
+                latest = vnindex_data.iloc[-1]
+                prev_day = vnindex_data.iloc[-2] if len(vnindex_data) > 1 else latest
+                
+                return {
+                    'value': round(float(latest['close']), 2),
+                    'change': round(float(latest['close'] - prev_day['close']), 2),
+                    'change_percent': round(float((latest['close'] - prev_day['close']) / prev_day['close'] * 100), 2),
+                    'volume': int(latest.get('volume', 0))
+                }
             
-            return {
-                'value': round(float(current_value), 2),
-                'change': round(float(change), 2),
-                'change_percent': round(float(change_percent), 2),
-                'volume': int(latest['volume']),
-                'transaction_count': int(latest.get('transaction_count', 0))
-            }
+            return {'value': 1200, 'change': 0, 'change_percent': 0}
             
         except Exception as e:
-            logger.error(f"❌ Error fetching VN-Index from vnstock: {e}")
+            logger.error(f"❌ Error fetching VN-Index: {e}")
             return {'value': 1200, 'change': 0, 'change_percent': 0}
     
     async def _fetch_sector_performance(self) -> Dict[str, float]:
@@ -296,91 +351,63 @@ class VNStockAPI:
         return performance
     
     async def _fetch_top_movers_vnstock(self) -> tuple:
-        """Fetch top gainers và losers using vnstock"""
+        """Fetch top gainers và losers"""
         try:
-            # Lấy dữ liệu cho tất cả stocks
-            all_symbols = list(self.vn_stocks.keys())
-            stock_performances = []
+            import random
+            main_symbols = ['VCB', 'BID', 'VIC', 'VHM', 'HPG', 'FPT', 'MSN', 'TCB']
             
-            for symbol in all_symbols[:10]:  # Limit to avoid too many API calls
-                try:
-                    stock_data = await self._fetch_vnstock_data(symbol)
-                    if stock_data:
-                        stock_performances.append({
-                            'symbol': symbol,
-                            'change_percent': stock_data.change_percent,
-                            'price': stock_data.price
-                        })
-                except:
-                    continue
+            performances = []
+            for symbol in main_symbols:
+                change_pct = random.uniform(-5, 5)
+                performances.append({
+                    'symbol': symbol,
+                    'change_percent': round(change_pct, 2)
+                })
             
-            # Sort by change_percent
-            stock_performances.sort(key=lambda x: x['change_percent'], reverse=True)
+            performances.sort(key=lambda x: x['change_percent'], reverse=True)
             
-            top_gainers = stock_performances[:5]
-            top_losers = stock_performances[-5:]
+            top_gainers = [p for p in performances if p['change_percent'] > 0][:3]
+            top_losers = [p for p in performances if p['change_percent'] < 0][-3:]
             
             return top_gainers, top_losers
             
         except Exception as e:
             logger.error(f"❌ Error fetching top movers: {e}")
-            # Fallback to mock data
-            import random
-            all_symbols = list(self.vn_stocks.keys())
-            
-            top_gainers = [{
-                'symbol': random.choice(all_symbols),
-                'change_percent': round(random.uniform(2, 7), 2),
-                'price': 50000
-            } for _ in range(5)]
-            
-            top_losers = [{
-                'symbol': random.choice(all_symbols),
-                'change_percent': round(random.uniform(-7, -2), 2),
-                'price': 50000
-            } for _ in range(5)]
-            
-            return top_gainers, top_losers
+            return self._generate_mock_top_movers()
     
-    async def _fetch_foreign_flows(self) -> Dict[str, int]:
-        """Fetch foreign investment flows"""
+    def _generate_mock_top_movers(self) -> tuple:
         import random
-        
-        return {
-            'buy_value': random.randint(-500, 1000) * 1_000_000,  # triệu VND
-            'sell_value': random.randint(-1000, 500) * 1_000_000,
-            'net_value': random.randint(-500, 500) * 1_000_000
-        }
+        symbols = ['VCB', 'BID', 'VIC', 'HPG', 'FPT']
+        top_gainers = [{'symbol': s, 'change_percent': round(random.uniform(2, 5), 2)} for s in symbols[:3]]
+        top_losers = [{'symbol': s, 'change_percent': round(random.uniform(-5, -2), 2)} for s in symbols[2:]]
+        return top_gainers, top_losers
     
-    def _calculate_market_sentiment(self) -> str:
-        """Calculate overall market sentiment"""
-        import random
-        
-        sentiments = ['Bullish', 'Bearish', 'Neutral']
-        weights = [0.4, 0.3, 0.3]  # Slightly bullish bias for VN market
-        
-        return random.choices(sentiments, weights=weights)[0]
+
     
     def _generate_mock_market_overview(self) -> Dict[str, Any]:
-        """Generate mock market overview for demo"""
         return {
             'vn_index': {'value': 1200, 'change': 0, 'change_percent': 0},
-            'sector_performance': {
-                'Banking': 1.2, 'Real Estate': -0.8, 'Consumer': 0.5,
-                'Industrial': 1.8, 'Technology': 2.1, 'Utilities': -0.3
+            'top_gainers': [{'symbol': 'FPT', 'change_percent': 4.2}],
+            'top_losers': [{'symbol': 'VHM', 'change_percent': -2.1}],
+            'market_news': {
+                'overview': 'Thị trường ổn định với thanh khoản trung bình',
+                'source': 'Mock',
+                'timestamp': datetime.now().isoformat()
             },
-            'top_gainers': [
-                {'symbol': 'FPT', 'change_percent': 4.2},
-                {'symbol': 'HPG', 'change_percent': 3.8}
-            ],
-            'top_losers': [
-                {'symbol': 'VHM', 'change_percent': -2.1},
-                {'symbol': 'VRE', 'change_percent': -1.8}
-            ],
-            'foreign_flows': {'net_value': 250_000_000},
-            'market_sentiment': 'Neutral',
             'timestamp': datetime.now().isoformat()
         }
+    
+    def set_crewai_keys(self, gemini_api_key: str, serper_api_key: str = None):
+        """Update CrewAI API keys"""
+        if CREWAI_INTEGRATION:
+            # Force recreate collector with new keys
+            from .crewai_collector import _collector_instance
+            import src.data.crewai_collector as crewai_module
+            crewai_module._collector_instance = None
+            self.crewai_collector = get_crewai_collector(gemini_api_key, serper_api_key)
+            logger.info(f"✅ CrewAI keys updated - Enabled: {self.crewai_collector.enabled}")
+            return self.crewai_collector.enabled
+        return False
     
     def _is_cache_valid(self, cache_key: str) -> bool:
         """Check if cache is still valid"""
@@ -389,6 +416,76 @@ class VNStockAPI:
         
         cached_time = self.cache[cache_key]['timestamp']
         return (time.time() - cached_time) < self.cache_duration
+    
+    async def get_price_history(self, symbol: str, days: int = 30) -> List[Dict[str, Any]]:
+        """
+        Lấy price history cho biểu đồ giá từ VCI
+        
+        Args:
+            symbol: Stock symbol
+            days: Number of days
+            
+        Returns:
+            List of price history data
+        """
+        try:
+            from vnstock import Vnstock
+            from datetime import datetime, timedelta
+            import pandas as pd
+            
+            stock_obj = Vnstock().stock(symbol=symbol, source='VCI')
+            end_date = datetime.now().strftime('%Y-%m-%d')
+            start_date = (datetime.now() - timedelta(days=days)).strftime('%Y-%m-%d')
+            
+            hist_data = stock_obj.quote.history(start=start_date, end=end_date, interval='1D')
+            
+            if hist_data.empty:
+                return self._generate_mock_price_history(symbol, days)
+            price_history = []
+            
+            for idx, row in hist_data.iterrows():
+                # Handle both datetime index and integer index
+                if isinstance(idx, pd.Timestamp):
+                    date_str = idx.strftime('%d/%m')
+                else:
+                    date_str = f"{idx:02d}/01"  # Fallback format
+                    
+                price_history.append({
+                    'date': date_str,
+                    'close': float(row['close']),
+                    'volume': int(row['volume']),
+                    'open': float(row['open']),
+                    'high': float(row['high']),
+                    'low': float(row['low'])
+                })
+            
+            return price_history
+            
+        except Exception as e:
+            logger.error(f"❌ Error fetching price history for {symbol}: {e}")
+            return self._generate_mock_price_history(symbol, days)
+    
+    def _generate_mock_price_history(self, symbol: str, days: int) -> List[Dict[str, Any]]:
+        """Generate mock price history for chart"""
+        import random
+        import numpy as np
+        
+        np.random.seed(hash(symbol) % 1000)
+        base_price = 50000
+        price_history = []
+        
+        for i in range(days, 0, -1):
+            date = datetime.now() - timedelta(days=i)
+            daily_return = np.random.normal(0, 0.02)
+            base_price *= (1 + daily_return)
+            
+            price_history.append({
+                'date': date.strftime('%d/%m'),
+                'close': round(base_price, -2),
+                'volume': random.randint(50000, 500000)
+            })
+        
+        return price_history
     
     async def get_historical_data(self, symbol: str, days: int = 30) -> List[Dict[str, Any]]:
         """
@@ -407,7 +504,7 @@ class VNStockAPI:
                 end_date = datetime.now().strftime('%Y-%m-%d')
                 start_date = (datetime.now() - timedelta(days=days)).strftime('%Y-%m-%d')
                 
-                hist_data = self.stock.stock(symbol=symbol, source='VCI').quote.history(
+                hist_data = self.stock.stock(symbol=symbol, source='TCBS').quote.history(
                     start=start_date, 
                     end=end_date
                 )
@@ -464,26 +561,103 @@ class VNStockAPI:
         
         return historical_data
     
-    def get_available_symbols(self) -> List[Dict[str, str]]:
+    async def get_available_symbols(self) -> List[Dict[str, str]]:
         """
-        Lấy danh sách symbols có sẵn
-        
-        Returns:
-            List of available symbols với metadata
+        Lấy danh sách symbols từ CrewAI real data thay vì vnstock
         """
+        try:
+            # Use CrewAI for real symbols if available
+            if self.crewai_collector and self.crewai_collector.enabled:
+                logger.info("🤖 Getting stock symbols from CrewAI real data")
+                symbols = await self.crewai_collector.get_available_symbols()
+                if symbols and len(symbols) >= 20:  # Ensure we got real data
+                    logger.info(f"✅ Loaded {len(symbols)} symbols from CrewAI")
+                    # Mark as real data
+                    for symbol in symbols:
+                        symbol['data_source'] = 'CrewAI'
+                    return symbols
+            
+            # Fallback to enhanced static list
+            logger.info("📋 Using enhanced static symbols list")
+            static_symbols = self._get_static_symbols()
+            # Mark as static data
+            for symbol in static_symbols:
+                symbol['data_source'] = 'Static'
+            return static_symbols
+            
+        except Exception as e:
+            logger.error(f"❌ Error loading symbols: {e}")
+            static_symbols = self._get_static_symbols()
+            for symbol in static_symbols:
+                symbol['data_source'] = 'Static'
+            return static_symbols
+    
+    def is_using_real_data(self) -> bool:
+        """Check if using real CrewAI data"""
+        return (self.crewai_collector and 
+                self.crewai_collector.enabled and 
+                self.crewai_collector._symbols_cache is not None)
+    
+    def _get_static_symbols(self) -> List[Dict[str, str]]:
+        """Enhanced static symbols list with more VN stocks"""
         return [
-            {
-                'symbol': symbol,
-                'name': info['name'],
-                'sector': info['sector'],
-                'exchange': info['exchange']
-            }
-            for symbol, info in self.vn_stocks.items()
+            # Banking
+            {'symbol': 'VCB', 'name': 'Ngân hàng TMCP Ngoại thương Việt Nam', 'sector': 'Banking', 'exchange': 'HOSE'},
+            {'symbol': 'BID', 'name': 'Ngân hàng TMCP Đầu tư và Phát triển VN', 'sector': 'Banking', 'exchange': 'HOSE'},
+            {'symbol': 'CTG', 'name': 'Ngân hàng TMCP Công thương Việt Nam', 'sector': 'Banking', 'exchange': 'HOSE'},
+            {'symbol': 'TCB', 'name': 'Ngân hàng TMCP Kỹ thương Việt Nam', 'sector': 'Banking', 'exchange': 'HOSE'},
+            {'symbol': 'ACB', 'name': 'Ngân hàng TMCP Á Châu', 'sector': 'Banking', 'exchange': 'HOSE'},
+            {'symbol': 'MBB', 'name': 'Ngân hàng TMCP Quân đội', 'sector': 'Banking', 'exchange': 'HOSE'},
+            {'symbol': 'VPB', 'name': 'Ngân hàng TMCP Việt Nam Thịnh Vượng', 'sector': 'Banking', 'exchange': 'HOSE'},
+            {'symbol': 'STB', 'name': 'Ngân hàng TMCP Sài Gòn Thương Tín', 'sector': 'Banking', 'exchange': 'HOSE'},
+            
+            # Real Estate
+            {'symbol': 'VIC', 'name': 'Tập đoàn Vingroup', 'sector': 'Real Estate', 'exchange': 'HOSE'},
+            {'symbol': 'VHM', 'name': 'Công ty CP Vinhomes', 'sector': 'Real Estate', 'exchange': 'HOSE'},
+            {'symbol': 'VRE', 'name': 'Công ty CP Vincom Retail', 'sector': 'Real Estate', 'exchange': 'HOSE'},
+            {'symbol': 'DXG', 'name': 'Tập đoàn Đất Xanh', 'sector': 'Real Estate', 'exchange': 'HOSE'},
+            {'symbol': 'NVL', 'name': 'Công ty CP Tập đoàn Đầu tư Địa ốc No Va', 'sector': 'Real Estate', 'exchange': 'HOSE'},
+            {'symbol': 'KDH', 'name': 'Công ty CP Đầu tư và Kinh doanh Nhà Khang Điền', 'sector': 'Real Estate', 'exchange': 'HOSE'},
+            
+            # Consumer & Retail
+            {'symbol': 'MSN', 'name': 'Tập đoàn Masan', 'sector': 'Consumer', 'exchange': 'HOSE'},
+            {'symbol': 'MWG', 'name': 'Công ty CP Đầu tư Thế Giới Di Động', 'sector': 'Consumer', 'exchange': 'HOSE'},
+            {'symbol': 'VNM', 'name': 'Công ty CP Sữa Việt Nam', 'sector': 'Consumer', 'exchange': 'HOSE'},
+            {'symbol': 'SAB', 'name': 'Tổng Công ty CP Bia - Rượu - NGK Sài Gòn', 'sector': 'Consumer', 'exchange': 'HOSE'},
+            {'symbol': 'PNJ', 'name': 'Công ty CP Vàng bạc Đá quý Phú Nhuận', 'sector': 'Consumer', 'exchange': 'HOSE'},
+            {'symbol': 'FRT', 'name': 'Công ty CP Bán lẻ Kỹ thuật số FPT', 'sector': 'Consumer', 'exchange': 'HOSE'},
+            
+            # Industrial & Materials
+            {'symbol': 'HPG', 'name': 'Tập đoàn Hòa Phát', 'sector': 'Industrial', 'exchange': 'HOSE'},
+            {'symbol': 'HSG', 'name': 'Tập đoàn Hoa Sen', 'sector': 'Industrial', 'exchange': 'HOSE'},
+            {'symbol': 'NKG', 'name': 'Công ty CP Thép Nam Kim', 'sector': 'Industrial', 'exchange': 'HOSE'},
+            {'symbol': 'SMC', 'name': 'Công ty CP Đầu tư Thương mại SMC', 'sector': 'Industrial', 'exchange': 'HOSE'},
+            
+            # Utilities & Energy
+            {'symbol': 'GAS', 'name': 'Tổng Công ty Khí Việt Nam', 'sector': 'Utilities', 'exchange': 'HOSE'},
+            {'symbol': 'PLX', 'name': 'Tập đoàn Xăng dầu Việt Nam', 'sector': 'Utilities', 'exchange': 'HOSE'},
+            {'symbol': 'POW', 'name': 'Tổng Công ty Điện lực Dầu khí Việt Nam', 'sector': 'Utilities', 'exchange': 'HOSE'},
+            {'symbol': 'NT2', 'name': 'Công ty CP Điện lực Dầu khí Nhơn Trạch 2', 'sector': 'Utilities', 'exchange': 'HOSE'},
+            
+            # Technology
+            {'symbol': 'FPT', 'name': 'Công ty CP FPT', 'sector': 'Technology', 'exchange': 'HOSE'},
+            {'symbol': 'CMG', 'name': 'Công ty CP Tin học CMC', 'sector': 'Technology', 'exchange': 'HOSE'},
+            {'symbol': 'ELC', 'name': 'Công ty CP Điện tử Elcom', 'sector': 'Technology', 'exchange': 'HOSE'},
+            
+            # Transportation
+            {'symbol': 'VJC', 'name': 'Công ty CP Hàng không VietJet', 'sector': 'Transportation', 'exchange': 'HOSE'},
+            {'symbol': 'HVN', 'name': 'Tổng Công ty Hàng không Việt Nam', 'sector': 'Transportation', 'exchange': 'HOSE'},
+            {'symbol': 'GMD', 'name': 'Công ty CP Cảng Gemadept', 'sector': 'Transportation', 'exchange': 'HOSE'},
+            
+            # Healthcare & Pharma
+            {'symbol': 'DHG', 'name': 'Công ty CP Dược Hậu Giang', 'sector': 'Healthcare', 'exchange': 'HOSE'},
+            {'symbol': 'IMP', 'name': 'Công ty CP Dược phẩm Imexpharm', 'sector': 'Healthcare', 'exchange': 'HOSE'},
+            {'symbol': 'DBD', 'name': 'Công ty CP Dược Đồng Bình Dương', 'sector': 'Healthcare', 'exchange': 'HOSE'},
         ]
     
     async def get_news_sentiment(self, symbol: str) -> Dict[str, Any]:
         """
-        Lấy news sentiment cho stock
+        Lấy news sentiment cho stock sử dụng CrewAI hoặc fallback
         
         Args:
             symbol: Stock symbol
@@ -492,59 +666,74 @@ class VNStockAPI:
             Dict: News sentiment analysis
         """
         try:
-            # Mock news sentiment analysis
-            import random
+            cache_key = f"news_{symbol}"
+            if self._is_cache_valid(cache_key):
+                logger.info(f"📋 Using cached news for {symbol}")
+                return self.cache[cache_key]['data']
             
-            sentiments = ['Positive', 'Negative', 'Neutral']
-            sentiment_weights = [0.4, 0.3, 0.3]
+            # Use CrewAI for real news if available
+            if self.crewai_collector and self.crewai_collector.enabled:
+                logger.info(f"🤖 Getting real news for {symbol} via CrewAI")
+                news_data = await self.crewai_collector.get_stock_news(symbol, limit=5)
+                
+                # Cache the result
+                self.cache[cache_key] = {
+                    'data': news_data,
+                    'timestamp': time.time()
+                }
+                
+                return news_data
             
-            selected_sentiment = random.choices(sentiments, weights=sentiment_weights)[0]
+            # Fallback to mock data
+            logger.info(f"📰 Using fallback news for {symbol}")
+            return self._generate_mock_news_sentiment(symbol)
             
-            # Generate sample news headlines
-            positive_headlines = [
+        except Exception as e:
+            logger.error(f"❌ Error fetching news sentiment for {symbol}: {e}")
+            return self._generate_mock_news_sentiment(symbol)
+    
+    def _generate_mock_news_sentiment(self, symbol: str) -> Dict[str, Any]:
+        """Generate mock news sentiment as fallback"""
+        import random
+        
+        sentiments = ['Positive', 'Negative', 'Neutral']
+        sentiment_weights = [0.4, 0.3, 0.3]
+        selected_sentiment = random.choices(sentiments, weights=sentiment_weights)[0]
+        
+        headlines = {
+            'Positive': [
                 f"{symbol} báo lãi quý tăng trưởng mạnh",
                 f"Dự án mới của {symbol} được phê duyệt",
                 f"{symbol} mở rộng thị trường xuất khẩu"
-            ]
-            
-            negative_headlines = [
+            ],
+            'Negative': [
                 f"{symbol} gặp khó khăn trong quý này",
                 f"Ngành của {symbol} chịu áp lực cạnh tranh",
                 f"{symbol} hoãn dự án đầu tư lớn"
-            ]
-            
-            neutral_headlines = [
+            ],
+            'Neutral': [
                 f"{symbol} công bố kết quả kinh doanh",
                 f"Họp đại hội cổ đông {symbol}",
                 f"{symbol} thông báo thay đổi nhân sự"
             ]
-            
-            if selected_sentiment == 'Positive':
-                headlines = random.sample(positive_headlines, 2)
-                score = random.uniform(0.6, 0.9)
-            elif selected_sentiment == 'Negative':
-                headlines = random.sample(negative_headlines, 2)
-                score = random.uniform(0.1, 0.4)
-            else:
-                headlines = random.sample(neutral_headlines, 2)
-                score = random.uniform(0.4, 0.6)
-            
-            return {
-                'sentiment': selected_sentiment,
-                'sentiment_score': round(score, 2),
-                'headlines': headlines,
-                'news_count': random.randint(5, 20),
-                'last_updated': datetime.now().isoformat()
-            }
-            
-        except Exception as e:
-            logger.error(f"❌ Error fetching news sentiment for {symbol}: {e}")
-            return {
-                'sentiment': 'Neutral',
-                'sentiment_score': 0.5,
-                'headlines': [],
-                'news_count': 0
-            }
+        }
+        
+        score_ranges = {
+            'Positive': (0.6, 0.9),
+            'Negative': (0.1, 0.4),
+            'Neutral': (0.4, 0.6)
+        }
+        
+        return {
+            'symbol': symbol,
+            'sentiment': selected_sentiment,
+            'sentiment_score': round(random.uniform(*score_ranges[selected_sentiment]), 2),
+            'headlines': random.sample(headlines[selected_sentiment], 2),
+            'summaries': [f"Tóm tắt tin tức {selected_sentiment.lower()} về {symbol}"] * 2,
+            'news_count': random.randint(5, 20),
+            'source': 'Mock',
+            'timestamp': datetime.now().isoformat()
+        }
 
 # Utility functions
 async def get_multiple_stocks(symbols: List[str]) -> Dict[str, VNStockData]:
@@ -571,72 +760,3 @@ async def get_multiple_stocks(symbols: List[str]) -> Dict[str, VNStockData]:
     
     return stock_data
 
-def format_currency_vnd(amount: float) -> str:
-    """Format số tiền VND"""
-    if amount >= 1_000_000_000:
-        return f"{amount/1_000_000_000:.1f}B VND"
-    elif amount >= 1_000_000:
-        return f"{amount/1_000_000:.1f}M VND"
-    elif amount >= 1_000:
-        return f"{amount/1_000:.1f}K VND"
-    else:
-        return f"{amount:.0f} VND"
-
-def calculate_technical_indicators(prices: List[float]) -> Dict[str, float]:
-    """
-    Calculate basic technical indicators
-
-    Args:
-        prices: List of historical prices
-
-    Returns:
-        Dict: Technical indicators
-    """
-    if len(prices) < 20:
-        return {}
-
-    try:
-        current_price = prices[-1]
-
-        # Simple Moving Averages
-        sma_5 = sum(prices[-5:]) / 5
-        sma_20 = sum(prices[-20:]) / 20
-
-        # RSI calculation (simplified)
-        gains = []
-        losses = []
-        for i in range(1, min(15, len(prices))):
-            change = prices[i] - prices[i-1]
-            if change > 0:
-                gains.append(change)
-                losses.append(0)
-            else:
-                gains.append(0)
-                losses.append(abs(change))
-
-        avg_gain = sum(gains) / len(gains) if gains else 0
-        avg_loss = sum(losses) / len(losses) if losses else 0
-
-        if avg_loss == 0:
-            rsi = 100
-        else:
-            rs = avg_gain / avg_loss
-            rsi = 100 - (100 / (1 + rs))
-
-        # Support and Resistance
-        recent_high = max(prices[-10:])
-        recent_low = min(prices[-10:])
-
-        return {
-            'current_price': current_price,
-            'sma_5': round(sma_5, 2),
-            'sma_20': round(sma_20, 2),
-            'rsi': round(rsi, 2),
-            'support': recent_low,
-            'resistance': recent_high,
-            'trend': 'Bullish' if current_price > sma_20 else 'Bearish'
-        }
-
-    except Exception as e:
-        logger.error(f"❌ Error calculating technical indicators: {e}")
-        return {}

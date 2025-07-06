@@ -1,214 +1,428 @@
 # src/ui/styles.py
 """
-CSS Styles cho AI Trading Team Vietnam - 6 Agents + Gemini
-Custom styling cho Streamlit components
+Modern CSS Styles for AI Trading Team Vietnam
 """
 
 import streamlit as st
 
 def load_custom_css():
-    """Load custom CSS styles for the application"""
-    
+    """Load modern CSS styles for the application"""
     css = """
     <style>
-    /* Main container styling */
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap');
+    
+    :root {
+        --primary-gradient: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        --success-gradient: linear-gradient(135deg, #00C851 0%, #007E33 100%);
+        --danger-gradient: linear-gradient(135deg, #FF4444 0%, #CC0000 100%);
+        --warning-gradient: linear-gradient(135deg, #FF8800 0%, #FF6600 100%);
+        --shadow-light: 0 8px 32px rgba(0, 0, 0, 0.1);
+        --shadow-medium: 0 12px 40px rgba(0, 0, 0, 0.15);
+    }
+    
+    * {
+        font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+    }
+    
+    body {
+        background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
+    }
+    
     .main-header {
-        background: linear-gradient(90deg, #667eea 0%, #764ba2 100%);
-        padding: 2rem;
-        border-radius: 10px;
+        background: var(--primary-gradient);
+        padding: 3rem 2rem;
+        border-radius: 20px;
         color: white;
-        text-align: center;
         margin-bottom: 2rem;
+        box-shadow: var(--shadow-medium);
+        position: relative;
+        overflow: hidden;
     }
     
-    .header-container {
-        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-        padding: 2rem;
-        border-radius: 15px;
-        color: white;
-        text-align: center;
-        margin-bottom: 2rem;
-        box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+    .header-content {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        position: relative;
+        z-index: 1;
+        flex-wrap: wrap;
+        gap: 2rem;
     }
     
-    .header-container h1 {
-        margin: 0;
-        font-size: 2.5rem;
-        font-weight: bold;
+    .header-left h1 {
+        font-size: 2.8rem;
+        font-weight: 800;
+        margin-bottom: 0.5rem;
+        text-shadow: 2px 2px 4px rgba(0,0,0,0.3);
     }
     
-    .header-container p {
-        margin: 1rem 0 0 0;
-        font-size: 1.2rem;
-        opacity: 0.9;
+    .flag {
+        font-size: 3.2rem;
+        margin-right: 1rem;
+        animation: wave 3s ease-in-out infinite;
     }
     
-    /* Agent cards styling */
-    .agent-card {
-        border-radius: 10px;
-        padding: 20px;
-        margin: 15px 0;
-        box-shadow: 0 2px 8px rgba(0,0,0,0.1);
-        border-left: 5px solid;
-        transition: transform 0.2s ease, box-shadow 0.2s ease;
+    @keyframes wave {
+        0%, 100% { transform: rotate(0deg); }
+        25% { transform: rotate(-8deg); }
+        75% { transform: rotate(8deg); }
     }
     
-    .agent-card:hover {
-        transform: translateY(-2px);
-        box-shadow: 0 4px 15px rgba(0,0,0,0.15);
+    .subtitle {
+        font-size: 1.3rem;
+        opacity: 0.95;
+        margin-bottom: 1.5rem;
+        font-weight: 400;
     }
     
-    .analyst-card {
-        background: linear-gradient(135deg, #e3f2fd 0%, #bbdefb 100%);
-        border-left-color: #2196f3;
+    .highlight {
+        background: rgba(255, 255, 255, 0.2);
+        padding: 0.3rem 0.7rem;
+        border-radius: 8px;
+        font-weight: 600;
+        border: 1px solid rgba(255, 255, 255, 0.2);
+        backdrop-filter: blur(10px);
     }
     
-    .risk-manager-card {
-        background: linear-gradient(135deg, #fff3e0 0%, #ffe0b2 100%);
-        border-left-color: #ff9800;
+    .agent-badges {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.7rem;
+        margin-top: 1.5rem;
     }
     
-    .portfolio-manager-card {
-        background: linear-gradient(135deg, #f3e5f5 0%, #e1bee7 100%);
-        border-left-color: #9c27b0;
-    }
-    
-    /* Stock overview card */
-    .stock-overview {
-        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-        color: white;
-        padding: 25px;
-        border-radius: 15px;
-        margin: 20px 0;
-        box-shadow: 0 4px 15px rgba(0,0,0,0.1);
-    }
-    
-    /* Recommendation cards */
-    .recommendation-card {
-        padding: 20px;
-        border-radius: 10px;
-        margin: 15px 0;
-        text-align: center;
-        color: white;
-        font-weight: bold;
-    }
-    
-    .buy-recommendation {
-        background: linear-gradient(135deg, #4caf50 0%, #81c784 100%);
-    }
-    
-    .sell-recommendation {
-        background: linear-gradient(135deg, #f44336 0%, #e57373 100%);
-    }
-    
-    .hold-recommendation {
-        background: linear-gradient(135deg, #ff9800 0%, #ffb74d 100%);
-    }
-    
-    /* Metrics cards */
-    .metric-card {
-        background: white;
-        padding: 20px;
-        border-radius: 10px;
-        box-shadow: 0 2px 8px rgba(0,0,0,0.1);
-        text-align: center;
-        margin: 10px 0;
-        border: 1px solid #e0e0e0;
-    }
-    
-    .metric-card h3 {
-        margin: 0;
-        color: #333;
-        font-size: 1.8rem;
-    }
-    
-    .metric-card p {
-        margin: 5px 0 0 0;
-        color: #666;
-        font-size: 0.9rem;
-    }
-    
-    /* Button styling */
-    .stButton > button {
-        background: linear-gradient(90deg, #667eea 0%, #764ba2 100%);
-        color: white;
-        border: none;
+    .badge {
+        background: rgba(255, 255, 255, 0.1);
+        border: 1px solid rgba(255, 255, 255, 0.2);
+        padding: 0.5rem 1rem;
         border-radius: 25px;
-        padding: 0.5rem 2rem;
-        font-weight: bold;
+        font-size: 0.9rem;
+        font-weight: 500;
+        backdrop-filter: blur(15px);
         transition: all 0.3s ease;
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+    }
+    
+    .badge:hover {
+        background: rgba(255, 255, 255, 0.25);
+        transform: translateY(-3px);
+        box-shadow: 0 8px 25px rgba(0, 0, 0, 0.15);
+    }
+    
+    .live-indicator {
+        display: flex;
+        align-items: center;
+        gap: 0.7rem;
+        background: rgba(255, 255, 255, 0.1);
+        padding: 0.8rem 1.5rem;
+        border-radius: 30px;
+        border: 1px solid rgba(255, 255, 255, 0.2);
+        backdrop-filter: blur(15px);
+        font-size: 0.9rem;
+        font-weight: 500;
+    }
+    
+    .pulse {
+        width: 12px;
+        height: 12px;
+        background: #00ff88;
+        border-radius: 50%;
+        animation: pulse 2s infinite;
+    }
+    
+    @keyframes pulse {
+        0% { box-shadow: 0 0 0 0 rgba(0, 255, 136, 0.7); }
+        70% { box-shadow: 0 0 0 15px rgba(0, 255, 136, 0); }
+        100% { box-shadow: 0 0 0 0 rgba(0, 255, 136, 0); }
+    }
+    
+    .stock-overview-modern {
+        background: white;
+        border-radius: 20px;
+        box-shadow: var(--shadow-light);
+        padding: 2rem;
+        margin: 2rem 0;
+        border: 1px solid rgba(0, 0, 0, 0.05);
+        position: relative;
+        overflow: hidden;
+    }
+    
+    .stock-overview-modern::before {
+        content: '';
+        position: absolute;
+        top: 0;
+        left: 0;
+        right: 0;
+        height: 4px;
+        background: var(--primary-gradient);
+    }
+    
+    .stock-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: flex-start;
+        margin-bottom: 2rem;
+        flex-wrap: wrap;
+        gap: 1rem;
+    }
+    
+    .stock-symbol {
+        font-size: 3rem;
+        font-weight: 800;
+        margin: 0;
+        background: var(--primary-gradient);
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
+        background-clip: text;
+    }
+    
+    .stock-meta {
+        display: flex;
+        gap: 1rem;
+        margin-top: 0.5rem;
+    }
+    
+    .sector, .exchange {
+        background: #f8f9fa;
+        padding: 0.3rem 0.8rem;
+        border-radius: 15px;
+        font-size: 0.85rem;
+        font-weight: 500;
+        color: #666;
+    }
+    
+    .price-container {
+        text-align: right;
+    }
+    
+    .current-price {
+        font-size: 2.5rem;
+        font-weight: 700;
+        color: #333;
+        margin-bottom: 0.5rem;
+    }
+    
+    .currency {
+        font-size: 1.2rem;
+        opacity: 0.7;
+        font-weight: 400;
+    }
+    
+    .price-change {
+        display: flex;
+        align-items: center;
+        justify-content: flex-end;
+        gap: 0.5rem;
+        font-size: 1.1rem;
+        font-weight: 600;
+    }
+    
+    .price-change.positive {
+        color: #00C851;
+    }
+    
+    .price-change.negative {
+        color: #FF4444;
+    }
+    
+    .metrics-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+        gap: 1.5rem;
+    }
+    
+    .metric-card {
+        background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+        border-radius: 15px;
+        padding: 1.5rem;
+        display: flex;
+        align-items: center;
+        gap: 1rem;
+        transition: all 0.3s ease;
+        border: 1px solid rgba(0, 0, 0, 0.05);
+    }
+    
+    .metric-card:hover {
+        transform: translateY(-5px);
+        box-shadow: var(--shadow-light);
+    }
+    
+    .metric-icon {
+        font-size: 2rem;
+        opacity: 0.8;
+    }
+    
+    .metric-label {
+        font-size: 0.85rem;
+        color: #666;
+        font-weight: 500;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+        margin-bottom: 0.3rem;
+    }
+    
+    .metric-value {
+        font-size: 1.4rem;
+        font-weight: 700;
+        color: #333;
+    }
+    
+    .recommendation-card-modern {
+        border-radius: 20px;
+        padding: 2.5rem;
+        margin: 2rem 0;
+        color: white;
+        box-shadow: var(--shadow-medium);
+        position: relative;
+        overflow: hidden;
+        text-align: center;
+    }
+    
+    .recommendation-card-modern::before {
+        content: '';
+        position: absolute;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background: radial-gradient(circle at 30% 20%, rgba(255,255,255,0.2) 0%, transparent 50%);
+        pointer-events: none;
+    }
+    
+    .rec-header {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 1.5rem;
+        margin-bottom: 1.5rem;
+    }
+    
+    .rec-icon {
+        font-size: 4rem;
+        animation: bounce 2s infinite;
+    }
+    
+    @keyframes bounce {
+        0%, 20%, 50%, 80%, 100% { transform: translateY(0); }
+        40% { transform: translateY(-10px); }
+        60% { transform: translateY(-5px); }
+    }
+    
+    .rec-title h2 {
+        font-size: 1rem;
+        font-weight: 500;
+        margin: 0;
+        opacity: 0.9;
+        letter-spacing: 2px;
+    }
+    
+    .rec-title h1 {
+        font-size: 3rem;
+        font-weight: 800;
+        margin: 0.5rem 0 0 0;
+        text-shadow: 2px 2px 4px rgba(0,0,0,0.3);
+    }
+    
+    .rec-reason {
+        font-size: 1.1rem;
+        line-height: 1.6;
+        opacity: 0.95;
+        margin-bottom: 1.5rem;
+        font-weight: 400;
+    }
+    
+    .confidence-bar {
+        background: rgba(255, 255, 255, 0.2);
+        height: 8px;
+        border-radius: 4px;
+        overflow: hidden;
+        margin: 1rem 0;
+    }
+    
+    .confidence-fill {
+        height: 100%;
+        background: rgba(255, 255, 255, 0.8);
+        border-radius: 4px;
+        transition: width 1s ease;
+    }
+    
+    .confidence-text {
+        font-size: 0.9rem;
+        opacity: 0.8;
+        font-weight: 500;
+    }
+    
+    .stButton > button {
+        background: var(--primary-gradient) !important;
+        color: white !important;
+        border: none !important;
+        border-radius: 25px !important;
+        padding: 0.75rem 2rem !important;
+        font-weight: 600 !important;
+        font-size: 0.95rem !important;
+        transition: all 0.3s ease !important;
+        box-shadow: var(--shadow-light) !important;
+        position: relative !important;
+        overflow: hidden !important;
     }
     
     .stButton > button:hover {
-        transform: translateY(-2px);
-        box-shadow: 0 4px 15px rgba(102, 126, 234, 0.4);
+        transform: translateY(-3px) !important;
+        box-shadow: var(--shadow-medium) !important;
     }
     
-    /* Sidebar styling */
-    .css-1d391kg {
-        background-color: #f8f9fa;
-    }
-    
-    /* Progress bar styling */
-    .stProgress > div > div > div > div {
-        background: linear-gradient(90deg, #667eea 0%, #764ba2 100%);
-    }
-    
-    /* Chart container */
-    .chart-container {
-        background: white;
-        padding: 20px;
-        border-radius: 10px;
-        box-shadow: 0 2px 8px rgba(0,0,0,0.1);
-        margin: 20px 0;
-    }
-    
-    /* Success/Error/Warning messages */
-    .stSuccess {
-        background-color: #d4edda;
-        border-color: #c3e6cb;
-        color: #155724;
-    }
-    
-    .stError {
-        background-color: #f8d7da;
-        border-color: #f5c6cb;
-        color: #721c24;
-    }
-    
-    .stWarning {
-        background-color: #fff3cd;
-        border-color: #ffeaa7;
-        color: #856404;
-    }
-    
-    /* Market ticker styling */
-    .market-ticker {
-        background: linear-gradient(90deg, #f8f9fa 0%, #e9ecef 100%);
-        padding: 15px;
-        border-radius: 10px;
-        margin: 20px 0;
-        border: 1px solid #dee2e6;
-    }
-    
-    /* Loading animation */
     .loading-container {
-        text-align: center;
-        padding: 40px;
-        background: linear-gradient(45deg, #667eea, #764ba2);
-        border-radius: 10px;
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        padding: 3rem;
+        background: var(--primary-gradient);
+        border-radius: 20px;
+        margin: 2rem 0;
         color: white;
-        margin: 20px 0;
+        text-align: center;
+        box-shadow: var(--shadow-medium);
+    }
+    
+    .loading-content {
+        max-width: 400px;
     }
     
     .loading-spinner {
-        border: 4px solid rgba(255,255,255,0.3);
+        position: relative;
+        width: 80px;
+        height: 80px;
+        margin: 0 auto 2rem auto;
+    }
+    
+    .spinner-ring {
+        position: absolute;
+        width: 100%;
+        height: 100%;
+        border: 3px solid transparent;
+        border-top: 3px solid rgba(255, 255, 255, 0.8);
         border-radius: 50%;
-        border-top: 4px solid white;
+        animation: spin 1.5s linear infinite;
+    }
+    
+    .spinner-ring:nth-child(2) {
+        width: 60px;
+        height: 60px;
+        top: 10px;
+        left: 10px;
+        animation-delay: -0.5s;
+        border-top-color: rgba(255, 255, 255, 0.6);
+    }
+    
+    .spinner-ring:nth-child(3) {
         width: 40px;
         height: 40px;
-        animation: spin 2s linear infinite;
-        margin: 0 auto 20px auto;
+        top: 20px;
+        left: 20px;
+        animation-delay: -1s;
+        border-top-color: rgba(255, 255, 255, 0.4);
     }
     
     @keyframes spin {
@@ -216,233 +430,156 @@ def load_custom_css():
         100% { transform: rotate(360deg); }
     }
     
-    /* Table styling */
-    .dataframe {
+    .loading-title {
+        font-size: 1.5rem;
+        font-weight: 600;
+        margin-bottom: 0.5rem;
+    }
+    
+    .loading-subtitle {
+        opacity: 0.9;
+        margin-bottom: 1.5rem;
+    }
+    
+    .agents-status {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+        gap: 0.5rem;
+        margin-top: 1rem;
+    }
+    
+    .agent-status {
+        background: rgba(255, 255, 255, 0.1);
+        border: 1px solid rgba(255, 255, 255, 0.2);
+        padding: 0.5rem 0.8rem;
         border-radius: 10px;
-        overflow: hidden;
-        box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        font-size: 0.85rem;
+        backdrop-filter: blur(10px);
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
     }
     
-    .dataframe th {
-        background: linear-gradient(90deg, #667eea 0%, #764ba2 100%);
+    .agent-status.working {
+        animation: pulse-agent 1.5s infinite;
+    }
+    
+    @keyframes pulse-agent {
+        0%, 100% { opacity: 1; }
+        50% { opacity: 0.7; }
+    }
+    
+    .alert-modern {
+        display: flex;
+        align-items: center;
+        gap: 1rem;
+        padding: 1.5rem;
+        border-radius: 15px;
+        margin: 1.5rem 0;
         color: white;
-        font-weight: bold;
-        text-align: center;
+        box-shadow: var(--shadow-light);
     }
     
-    .dataframe td {
-        text-align: center;
-        padding: 10px;
+    .alert-icon {
+        font-size: 2rem;
+        flex-shrink: 0;
     }
     
-    /* Custom scrollbar */
+    .alert-title {
+        font-size: 1.1rem;
+        font-weight: 600;
+        margin-bottom: 0.3rem;
+    }
+    
+    .alert-subtitle {
+        opacity: 0.9;
+        font-size: 0.95rem;
+    }
+    
+    .chart-container {
+        background: white;
+        padding: 2rem;
+        border-radius: 20px;
+        box-shadow: var(--shadow-light);
+        margin: 2rem 0;
+        border: 1px solid rgba(0, 0, 0, 0.05);
+    }
+    
+    .chart-container h4 {
+        color: #333;
+        font-weight: 600;
+        margin-bottom: 1.5rem;
+        font-size: 1.2rem;
+    }
+    
+    @media (max-width: 768px) {
+        .header-content {
+            flex-direction: column;
+            text-align: center;
+            gap: 1.5rem;
+        }
+        
+        .header-left h1 {
+            font-size: 2rem;
+        }
+        
+        .stock-header {
+            flex-direction: column;
+            text-align: center;
+        }
+        
+        .price-container {
+            text-align: center;
+        }
+        
+        .current-price {
+            font-size: 2rem;
+        }
+        
+        .stock-symbol {
+            font-size: 2.5rem;
+        }
+        
+        .metrics-grid {
+            grid-template-columns: 1fr;
+        }
+        
+        .rec-header {
+            flex-direction: column;
+            gap: 1rem;
+        }
+        
+        .rec-title h1 {
+            font-size: 2.5rem;
+        }
+        
+        .agent-badges {
+            justify-content: center;
+        }
+    }
+    
+    html {
+        scroll-behavior: smooth;
+    }
+    
     ::-webkit-scrollbar {
         width: 8px;
     }
     
     ::-webkit-scrollbar-track {
         background: #f1f1f1;
-        border-radius: 10px;
+        border-radius: 4px;
     }
     
     ::-webkit-scrollbar-thumb {
-        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-        border-radius: 10px;
+        background: var(--primary-gradient);
+        border-radius: 4px;
     }
     
     ::-webkit-scrollbar-thumb:hover {
-        background: linear-gradient(135deg, #5a6fd8 0%, #6a4190 100%);
+        background: #555;
     }
     
-    /* Mobile responsiveness */
-    @media (max-width: 768px) {
-        .header-container h1 {
-            font-size: 2rem;
-        }
-        
-        .header-container p {
-            font-size: 1rem;
-        }
-        
-        .agent-card {
-            padding: 15px;
-            margin: 10px 0;
-        }
-        
-        .stock-overview {
-            padding: 20px;
-        }
-        
-        .metric-card {
-            padding: 15px;
-        }
-    }
-    
-    /* Hide Streamlit branding */
-    #MainMenu {visibility: hidden;}
-    footer {visibility: hidden;}
-    header {visibility: hidden;}
-    
-    /* Custom footer */
-    .custom-footer {
-        position: fixed;
-        left: 0;
-        bottom: 0;
-        width: 100%;
-        background: linear-gradient(90deg, #667eea 0%, #764ba2 100%);
-        color: white;
-        text-align: center;
-        padding: 10px;
-        font-size: 0.8rem;
-        z-index: 999;
-    }
     </style>
     """
-    
     st.markdown(css, unsafe_allow_html=True)
-
-def get_agent_colors():
-    """Get color scheme for agents"""
-    return {
-        "analyst": {
-            "primary": "#2196f3",
-            "background": "#e3f2fd",
-            "gradient": "linear-gradient(135deg, #e3f2fd 0%, #bbdefb 100%)"
-        },
-        "risk_manager": {
-            "primary": "#ff9800", 
-            "background": "#fff3e0",
-            "gradient": "linear-gradient(135deg, #fff3e0 0%, #ffe0b2 100%)"
-        },
-        "portfolio_manager": {
-            "primary": "#9c27b0",
-            "background": "#f3e5f5", 
-            "gradient": "linear-gradient(135deg, #f3e5f5 0%, #e1bee7 100%)"
-        }
-    }
-
-def get_recommendation_colors():
-    """Get color scheme for recommendations"""
-    return {
-        "BUY": {
-            "color": "#4caf50",
-            "background": "#e8f5e8",
-            "gradient": "linear-gradient(135deg, #4caf50 0%, #81c784 100%)"
-        },
-        "SELL": {
-            "color": "#f44336",
-            "background": "#ffebee", 
-            "gradient": "linear-gradient(135deg, #f44336 0%, #e57373 100%)"
-        },
-        "HOLD": {
-            "color": "#ff9800",
-            "background": "#fff3e0",
-            "gradient": "linear-gradient(135deg, #ff9800 0%, #ffb74d 100%)"
-        }
-    }
-
-def apply_custom_theme():
-    """Apply custom theme to Streamlit"""
-    
-    # Custom CSS for Vietnamese market theme
-    vn_theme = """
-    <style>
-    /* Vietnamese flag colors theme */
-    .vn-red { color: #da020e; }
-    .vn-yellow { color: #ffff00; }
-    
-    /* Vietnam-specific styling */
-    .vn-market-card {
-        background: linear-gradient(135deg, #da020e 0%, #ffff00 100%);
-        color: white;
-        padding: 20px;
-        border-radius: 10px;
-        margin: 15px 0;
-    }
-    
-    /* Currency formatting for VND */
-    .vnd-amount {
-        font-family: 'Courier New', monospace;
-        font-weight: bold;
-        color: #2e7d32;
-    }
-    
-    /* Stock ticker styling */
-    .stock-ticker {
-        background: #f5f5f5;
-        padding: 5px 10px;
-        border-radius: 5px;
-        font-family: monospace;
-        font-weight: bold;
-        display: inline-block;
-        margin: 2px;
-    }
-    
-    /* Vietnamese text styling */
-    .vietnamese-text {
-        font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-        line-height: 1.6;
-    }
-    </style>
-    """
-    
-    st.markdown(vn_theme, unsafe_allow_html=True)
-
-def show_loading_animation(message: str = "Đang xử lý..."):
-    """Show loading animation with Vietnamese text"""
-    
-    loading_html = f"""
-    <div class="loading-container">
-        <div class="loading-spinner"></div>
-        <h3>{message}</h3>
-        <p>Vui lòng chờ trong giây lát...</p>
-    </div>
-    """
-    
-    return st.markdown(loading_html, unsafe_allow_html=True)
-
-def format_stock_symbol(symbol: str) -> str:
-    """Format stock symbol with styling"""
-    
-    return f'<span class="stock-ticker">{symbol}</span>'
-
-def format_vnd_amount(amount: float) -> str:
-    """Format VND amount with styling"""
-    
-    if amount >= 1_000_000_000:
-        formatted = f"{amount/1_000_000_000:.1f} tỷ VND"
-    elif amount >= 1_000_000:
-        formatted = f"{amount/1_000_000:.1f} triệu VND"
-    else:
-        formatted = f"{amount:,.0f} VND"
-    
-    return f'<span class="vnd-amount">{formatted}</span>'
-
-# CSS Constants
-AGENT_CARD_CSS = """
-    border-radius: 10px;
-    padding: 20px;
-    margin: 15px 0;
-    box-shadow: 0 2px 8px rgba(0,0,0,0.1);
-    border-left: 5px solid;
-"""
-
-RECOMMENDATION_CARD_CSS = """
-    padding: 25px;
-    border-radius: 15px;
-    margin: 20px 0;
-    text-align: center;
-    color: white;
-    font-weight: bold;
-    box-shadow: 0 4px 15px rgba(0,0,0,0.2);
-"""
-
-METRIC_CARD_CSS = """
-    background: white;
-    padding: 20px;
-    border-radius: 10px;
-    box-shadow: 0 2px 8px rgba(0,0,0,0.1);
-    text-align: center;
-    margin: 10px 0;
-    border: 1px solid #e0e0e0;
-"""

@@ -15,6 +15,7 @@
 
 - 🤖 **6 AI Agents chuyên nghiệp**
 - 🧠 **Gemini AI Chatbot** tương tác tự nhiên
+- 📰 **CrewAI Real News** - Tin tức thật từ các nguồn VN
 - 📊 **Dữ liệu real-time** từ thị trường VN
 - 🚀 **FastAPI Backend** + **Streamlit Frontend**
 - 📈 **Phân tích kỹ thuật & cơ bản**
@@ -30,6 +31,7 @@
 | 💼 **InvestmentExpert** | Chuyên gia đầu tư | Phân tích cơ bản và khuyến nghị đầu tư |
 | ⚠️ **RiskExpert** | Quản lý rủi ro | Đánh giá và quản lý rủi ro đầu tư |
 | 🧠 **GeminiAgent** | AI Chatbot | Tương tác tự nhiên với Gemini AI |
+| 🤖 **CrewAI News** | Tin tức thật | Thu thập tin tức thật từ các nguồn VN |
 
 ## 🏗️ Kiến trúc hệ thống
 
@@ -59,49 +61,97 @@ agentvnstock/
 
 ## 🚀 Cài đặt & Chạy
 
-### 1. Clone repository
+### 🎯 Cài đặt tự động (Khuyến nghị)
 
+#### Windows:
+```cmd
+# Download và chạy
+git clone https://github.com/nminduo2k5/agentvnstock.git
+cd agentvnstock
+install.bat
+```
+
+#### Linux/Mac:
+```bash
+# Download và chạy
+git clone https://github.com/nminduo2k5/agentvnstock.git
+cd agentvnstock
+chmod +x install.sh
+./install.sh
+```
+
+### 🔧 Cài đặt thủ công
+
+#### 1. Clone repository
 ```bash
 git clone https://github.com/nminduo2k5/agentvnstock.git
 cd agentvnstock
 ```
 
-### 2. Cài đặt dependencies
-
+#### 2. Tạo virtual environment
 ```bash
+# Windows
+python -m venv venv
+venv\Scripts\activate
+
+# Linux/Mac
+python3 -m venv venv
+source venv/bin/activate
+```
+
+#### 3. Cài đặt dependencies
+```bash
+pip install --upgrade pip
 pip install -r requirements.txt
 ```
 
-### 3. Cấu hình API Keys (Tùy chọn)
+#### 4. Cấu hình API Keys
 
-Bạn có thể tạo file `.env` (không bắt buộc):
-
+Tạo file `.env`:
 ```env
-# Optional - có thể nhập trực tiếp trong app
+# Required for Gemini AI
 GOOGLE_API_KEY=your_gemini_api_key_here
 GEMINI_MODEL=gemini-1.5-flash
+
+# CrewAI Real News (Optional)
+SERPER_API_KEY=your_serper_api_key_here
+
+# Optional configurations
+VNSTOCK_SOURCE=VCI
+DEBUG_MODE=False
+LOG_LEVEL=INFO
 ```
 
-**Hoặc nhập API key trực tiếp khi chạy app:**
-- Streamlit: Nhập API key ở sidebar
-- FastAPI: Sử dụng endpoint `/set-gemini-key`
-LINK:https://aistudio.google.com/apikey
-### 4. Chạy ứng dụng
+**Lấy API keys tại:**
+- Gemini: https://aistudio.google.com/apikey
+- Serper (tin tức): https://serper.dev/api-key
 
-#### Option 1: Streamlit App (Recommended)
-
+#### 5. Test hệ thống
 ```bash
-streamlit run app.py
+python test_system.py
 ```
 
-#### Option 2: FastAPI Backend
+#### 6. Chạy ứng dụng
 
+**Option 1: Streamlit App (Khuyến nghị)**
 ```bash
-# Start API server
+# Cài đặt CrewAI integration
+install_crewai.bat
+
+# Chạy ứng dụng
+streamlit run src/ui/dashboard.py
+```
+
+**Option 2: FastAPI Backend**
+```bash
 python api.py
+```
 
-# Test API
-python test_api.py
+**Option 3: Development Mode**
+```bash
+# Chạy cả API và Streamlit
+python api.py &
+streamlit run app.py
 ```
 
 ## 📡 API Endpoints
@@ -111,6 +161,7 @@ python test_api.py
 | `/health` | GET | Health check |
 | `/analyze` | POST | Phân tích toàn diện |
 | `/query` | POST | Gemini chatbot |
+| `/set-crewai-keys` | POST | Cài đặt CrewAI keys |
 | `/vn-stock/{symbol}` | GET | Dữ liệu cổ phiếu VN |
 | `/vn-market` | GET | Tổng quan thị trường |
 | `/predict/{symbol}` | GET | Dự đoán giá |
@@ -163,6 +214,26 @@ stock_data = await api.get_stock_data('VCB')
 print(f"Price: {stock_data.price:,} VND")
 ```
 
+## 📰 CrewAI Real News
+
+### Tính năng mới
+- ✅ **Thu thập tin tức thật** từ cafef.vn, vneconomy.vn
+- ✅ **Phân tích sentiment** tự động
+- ✅ **Tóm tắt nội dung** bằng AI
+- ✅ **Đánh giá tác động** đến giá cổ phiếu
+
+### Cách sử dụng
+```bash
+# Cài đặt
+install_crewai.bat
+
+# Trong Streamlit app
+1. Nhập Gemini API key
+2. Nhập Serper API key (optional)
+3. Click "Cài đặt CrewAI"
+4. Tin tức thật sẽ được hiển thị
+```
+
 ## 📊 Cổ phiếu được hỗ trợ
 
 ### 🏦 Ngân hàng
@@ -194,15 +265,34 @@ print(f"Price: {stock_data.price:,} VND")
 
 ## 🧪 Testing
 
+### Comprehensive System Test
+```bash
+python test_system.py
+```
+
+### Individual Component Tests
 ```bash
 # Test vnstock integration
 python test_vnstock.py
 
-# Test API endpoints
+# Test API endpoints  
 python test_api.py
 
 # Test Gemini integration
 python test_gemini.py
+```
+
+### Development Tests
+```bash
+# Install dev dependencies
+pip install -e ".[dev]"
+
+# Run pytest
+pytest tests/
+
+# Code formatting
+black .
+flake8 .
 ```
 
 ## 📋 Requirements
@@ -226,22 +316,38 @@ python-multipart>=0.0.6
 
 ## 🔧 Cấu hình
 
-### Environment Variables
+### Environment Variables (.env)
 
 ```env
-# Optional - có thể nhập trực tiếp trong app
-GOOGLE_API_KEY=your_gemini_api_key
-
-# Optional
+# Core API Configuration
+GOOGLE_API_KEY=your_gemini_api_key_here
 GEMINI_MODEL=gemini-1.5-flash
+VNSTOCK_SOURCE=VCI
+
+# System Configuration
+DEBUG_MODE=False
+LOG_LEVEL=INFO
+CACHE_DURATION=60
+MAX_CONCURRENT_REQUESTS=10
+ENABLE_REAL_DATA=True
+
+# UI Configuration
+PAGE_TITLE=DUONG AI TRADING SIUUUU
+PAGE_ICON=🤖
+UI_LAYOUT=wide
+UI_THEME=light
+
+# API Configuration
+API_TIMEOUT=30
+MAX_RETRIES=3
 ```
 
 ### Dynamic API Key Setup
 
-**Streamlit:**
-- Mở sidebar
-- Nhập Google Gemini API key
-- Click "Cài đặt API Key"
+**Streamlit App:**
+1. Mở sidebar
+2. Nhập Google Gemini API key
+3. Click "⚙️ Cài đặt API Key"
 
 **FastAPI:**
 ```bash
@@ -250,15 +356,31 @@ curl -X POST "http://localhost:8000/set-gemini-key" \
      -d '{"api_key": "your_api_key_here"}'
 ```
 
-### API Configuration
+### Advanced Configuration
 
+**Config Manager:**
 ```python
-# In api.py
-app = FastAPI(
-    title="AI Trading Team Vietnam API",
-    description="6 AI Agents + Gemini Chatbot API",
-    version="1.0.0"
-)
+from src.utils.config_manager import config
+
+# Get configurations
+api_config = config.get_api_config()
+system_config = config.get_system_config()
+ui_config = config.get_ui_config()
+
+# Update API key
+config.update_api_key("new_api_key")
+```
+
+**Custom VN Stocks:**
+```python
+from src.utils.config_manager import VN_STOCK_SYMBOLS
+
+# Add new stock
+VN_STOCK_SYMBOLS['NEW'] = {
+    'name': 'New Company',
+    'sector': 'Technology',
+    'exchange': 'HOSE'
+}
 ```
 
 ## 📈 Screenshots
@@ -287,15 +409,69 @@ app = FastAPI(
 - Chỉ đầu tư số tiền có thể chấp nhận mất
 - Tác giả không chịu trách nhiệm về tổn thất tài chính
 
+## 🚀 Deployment
+
+### Docker (Coming Soon)
+```bash
+# Build image
+docker build -t agentvnstock .
+
+# Run container
+docker run -p 8501:8501 -p 8000:8000 agentvnstock
+```
+
+### Cloud Deployment
+- **Streamlit Cloud**: Deploy trực tiếp từ GitHub
+- **Heroku**: Sử dụng Procfile có sẵn
+- **AWS/GCP**: Sử dụng container hoặc serverless
+
 ## 📄 License
 
-Dự án này được phát hành dưới [Custom License](LICENSE.md) - chỉ dành cho mục đích cá nhân và nghiên cứu.
+Dự án này được phát hành dưới [MIT License](LICENSE) - tự do sử dụng cho mục đích cá nhân và thương mại.
+
+## 🔍 Troubleshooting
+
+### Lỗi thường gặp
+
+**1. Import Error:**
+```bash
+# Cài đặt lại dependencies
+pip install -r requirements.txt --force-reinstall
+```
+
+**2. VNStock Error:**
+```bash
+# Update vnstock
+pip install --upgrade vnstock
+```
+
+**3. Gemini API Error:**
+- Kiểm tra API key tại https://aistudio.google.com/apikey
+- Đảm bảo API key có quyền truy cập Gemini
+
+**4. Port đã được sử dụng:**
+```bash
+# Thay đổi port
+streamlit run app.py --server.port 8502
+uvicorn api:app --port 8001
+```
+
+### Debug Mode
+```bash
+# Bật debug mode
+export DEBUG_MODE=True  # Linux/Mac
+set DEBUG_MODE=True     # Windows
+
+# Hoặc trong .env
+DEBUG_MODE=True
+```
 
 ## 📞 Liên hệ & Hỗ trợ
 
-- 🐛 **Issues**: [GitHub Issues](https://github.com/your-username/agentvnstock/issues)
-- 💬 **Discussions**: [GitHub Discussions](https://github.com/your-username/agentvnstock/discussions)
-- 📧 **Email**: your-email@example.com
+- 🐛 **Issues**: [GitHub Issues](https://github.com/nminduo2k5/agentvnstock/issues)
+- 💬 **Discussions**: [GitHub Discussions](https://github.com/nminduo2k5/agentvnstock/discussions)
+- 📧 **Email**: support@agentvnstock.com
+- 💬 **Discord**: [Join our community](https://discord.gg/agentvnstock)
 
 ## 🙏 Acknowledgments
 
@@ -310,6 +486,9 @@ Dự án này được phát hành dưới [Custom License](LICENSE.md) - chỉ 
 
 **🇻🇳 Made with ❤️ for Vietnamese investors**
 
-[![Star this repo](https://img.shields.io/github/stars/your-username/agentvnstock?style=social)](https://github.com/your-username/agentvnstock)
+[![Star this repo](https://img.shields.io/github/stars/nminduo2k5/agentvnstock?style=social)](https://github.com/nminduo2k5/agentvnstock)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![Python 3.8+](https://img.shields.io/badge/python-3.8+-blue.svg)](https://www.python.org/downloads/)
+[![Code style: black](https://img.shields.io/badge/code%20style-black-000000.svg)](https://github.com/psf/black)
 
 </div>

@@ -7,8 +7,37 @@ class TickerNews:
     
     def get_ticker_news(self, symbol: str, limit: int = 5):
         try:
-            # Logic kiểm tra cổ phiếu VN đã được chuyển ra MainAgent.
-            # Agent này giờ chỉ tập trung vào cổ phiếu quốc tế qua Yahoo Finance.
+            # Check if VN stock
+            vn_stocks = ['VCB', 'BID', 'CTG', 'TCB', 'ACB', 'VIC', 'VHM', 'VRE', 'DXG', 'MSN', 'MWG', 'VNM', 'SAB', 'HPG', 'GAS', 'PLX', 'FPT']
+            
+            if symbol.upper() in vn_stocks:
+                # Use real VN stock news from VCI
+                from vnstock import Vnstock
+                
+                stock_obj = Vnstock().stock(symbol=symbol, source='VCI')
+                news_data = stock_obj.company.news()
+                
+                if news_data.empty:
+                    return self._get_vn_mock_news(symbol, limit)
+                
+                formatted_news = []
+                for _, item in news_data.head(limit).iterrows():
+                    formatted_news.append({
+                        "title": item.get("news_title", ""),
+                        "publisher": "VCI",
+                        "link": item.get("news_source_link", ""),
+                        "published": item.get("public_date", ""),
+                        "summary": item.get("news_short_content", "")
+                    })
+                
+                return {
+                    "symbol": symbol,
+                    "news_count": len(formatted_news),
+                    "news": formatted_news,
+                    "market": "Vietnam",
+                    "data_source": "VCI_Real"
+                }
+            
             # US/International stocks - use Yahoo Finance
             ticker = yf.Ticker(symbol)
             news = ticker.news
@@ -32,6 +61,9 @@ class TickerNews:
                 "market": "International"
             }
         except Exception as e:
+            # Fallback to mock news for VN stocks
+            if symbol.upper() in ['VCB', 'BID', 'CTG', 'TCB', 'ACB', 'VIC', 'VHM', 'VRE', 'DXG', 'MSN', 'MWG', 'VNM', 'SAB', 'HPG', 'GAS', 'PLX', 'FPT']:
+                return self._get_vn_mock_news(symbol, limit)
             return {"error": str(e)}
     
     def _get_vn_mock_news(self, symbol: str, limit: int = 5):

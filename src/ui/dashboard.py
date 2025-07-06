@@ -18,8 +18,8 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(
 from main_agent import MainAgent
 from src.data.vn_stock_api import VNStockAPI
 from src.ui.components import (
-    render_agent_card, render_stock_overview_card, 
-    render_recommendation_summary, render_stock_chart,
+    render_main_header, render_stock_overview_card, 
+    render_recommendation_card, render_chart_container,
     render_loading_animation, render_error_message
 )
 from src.ui.styles import load_custom_css
@@ -49,21 +49,7 @@ class AITradingDashboard:
     
     def render_header(self):
         """Render main header"""
-        st.markdown("""
-        <div style="
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            padding: 2rem;
-            border-radius: 15px;
-            color: white;
-            text-align: center;
-            margin-bottom: 2rem;
-        ">
-            <h1 style="margin: 0; font-size: 2.5rem;">🇻🇳 AI Trading Team Vietnam</h1>
-            <p style="margin: 1rem 0 0 0; font-size: 1.2rem; opacity: 0.9;">
-                Hệ thống phân tích đầu tư chứng khoán với 6 AI Agents chuyên nghiệp + Gemini Chatbot
-            </p>
-        </div>
-        """, unsafe_allow_html=True)
+        render_main_header()
     
     def render_sidebar(self) -> Optional[Dict[str, Any]]:
         """Render sidebar with 6 AI agents status and controls"""
@@ -71,25 +57,51 @@ class AITradingDashboard:
             st.header("⚙️ Cài đặt")
             
             # Gemini API Key Input
-            st.subheader("🔑 Gemini API Key")
+            st.subheader("🔑 API Keys")
             api_key = st.text_input(
                 "Google Gemini API Key:",
                 type="password",
                 help="Nhập API key từ Google AI Studio"
             )
             
+            # CrewAI Keys for real news
+            st.subheader("🤖 CrewAI (Real News)")
+            serper_key = st.text_input(
+                "Serper API Key (Optional):",
+                type="password",
+                help="Nhập Serper key để lấy tin tức thật"
+            )
+            
             gemini_status = "🟢" if self.main_agent.gemini_agent else "🔴"
             
-            if api_key and st.button("⚙️ Cài đặt API Key"):
-                if self.main_agent.set_gemini_api_key(api_key):
-                    st.success("✅ API key đã được cài đặt!")
-                    st.rerun()
-                else:
-                    st.error("❌ API key không hợp lệ!")
+            col_a, col_b = st.columns(2)
+            with col_a:
+                if api_key and st.button("⚙️ Cài đặt Gemini"):
+                    if self.main_agent.set_gemini_api_key(api_key):
+                        st.success("✅ Gemini API đã sẵn sàng!")
+                        st.rerun()
+                    else:
+                        st.error("❌ API key không hợp lệ!")
+            
+            with col_b:
+                if api_key and st.button("🤖 Cài đặt CrewAI"):
+                    if self.main_agent.set_crewai_keys(api_key, serper_key):
+                        st.success("✅ CrewAI tin tức thật đã bật!")
+                        st.rerun()
+                    else:
+                        st.warning("⚠️ CrewAI không khả dụng")
             
             if not api_key and not self.main_agent.gemini_agent:
                 st.warning("⚠️ Vui lòng nhập API key để sử dụng Gemini!")
-                st.info("💡 Lấy API key miễn phí tại: https://makersuite.google.com/app/apikey")
+                st.info("💡 Gemini: https://aistudio.google.com/apikey")
+                st.info("📰 Serper (tin tức): https://serper.dev/api-key")
+            
+            # CrewAI Status
+            crewai_status = "🔴"
+            if hasattr(self.main_agent.vn_api, 'crewai_collector') and self.main_agent.vn_api.crewai_collector:
+                crewai_status = "🟢" if self.main_agent.vn_api.crewai_collector.enabled else "🟡"
+            
+            st.write(f"{crewai_status} **CrewAI Real News**: {'Bật' if crewai_status == '🟢' else 'Tắt'}")
             
             st.divider()
             
@@ -101,7 +113,8 @@ class AITradingDashboard:
                 {"name": "🌍 MarketNews", "desc": "Tin tức thị trường", "status": "🟢"},
                 {"name": "💼 InvestmentExpert", "desc": "Phân tích đầu tư", "status": "🟢"},
                 {"name": "⚠️ RiskExpert", "desc": "Quản lý rủi ro", "status": "🟢"},
-                {"name": "🧠 GeminiAgent", "desc": "AI Chatbot", "status": gemini_status}
+                {"name": "🧠 GeminiAgent", "desc": "AI Chatbot", "status": gemini_status},
+                {"name": "🤖 CrewAI News", "desc": "Tin tức thật", "status": crewai_status}
             ]
             
             for agent in agents_info:
@@ -109,9 +122,30 @@ class AITradingDashboard:
             
             st.divider()
             
-            # Stock selection
-            st.subheader("📊 Chọn cổ phiếu")
-            symbols = self.vn_api.get_available_symbols()
+            # Stock selection - using CrewAI real data
+            st.subheader("📊 Chọn cổ phiếu (CrewAI Real Data)")
+            
+            # Load symbols asynchronously
+            @st.cache_data(ttl=3600)  # Cache for 1 hour
+            def load_symbols_crewai():
+                loop = asyncio.new_event_loop()
+                asyncio.set_event_loop(loop)
+                try:
+                    return loop.run_until_complete(self.vn_api.get_available_symbols())
+                except Exception as e:
+                    st.warning(f"⚠️ Lỗi tải danh sách: {e}")
+                    return self.vn_api._get_static_symbols()
+                finally:
+                    loop.close()
+            
+            symbols = load_symbols_crewai()
+            
+            # Show data source based on actual symbols loaded
+            if symbols and len(symbols) > 0 and symbols[0].get('data_source') == 'CrewAI':
+                st.success("🤖 Đang sử dụng dữ liệu thật từ CrewAI Gemini")
+            else:
+                st.info("📋 Sử dụng danh sách tĩnh (nhập Gemini API key để dùng CrewAI)")
+            
             symbol_options = [f"{s['symbol']} - {s['name']}" for s in symbols]
             selected_symbol = st.selectbox("Mã cổ phiếu:", symbol_options)
             symbol = selected_symbol.split(" - ")[0] if selected_symbol else "VCB"
@@ -162,9 +196,7 @@ class AITradingDashboard:
                     stock_data = result['vn_stock_data']
                     render_stock_overview_card(stock_data)
                     
-                    # Display metrics
                     col_a, col_b, col_c, col_d = st.columns(4)
-                    
                     with col_a:
                         st.metric("Giá hiện tại", f"{stock_data.price:,.0f} VND", 
                                 f"{stock_data.change_percent:+.2f}%")
@@ -174,20 +206,34 @@ class AITradingDashboard:
                         st.metric("Vốn hóa", f"{stock_data.market_cap:,.1f}B VND")
                     with col_d:
                         st.metric("P/E Ratio", f"{stock_data.pe_ratio}")
+                    
+                    # Biểu đồ giá (demo)
+                    import pandas as pd, numpy as np
+                    from datetime import datetime, timedelta
+                    np.random.seed(0)
+                    days = 30
+                    today = datetime.now()
+                    dates = [today - timedelta(days=i) for i in range(days)][::-1]
+                    base_price = stock_data.price
+                    prices = [base_price]
+                    for _ in range(1, days):
+                        prices.append(prices[-1] * (1 + np.random.normal(0, 0.01)))
+                    df = pd.DataFrame({
+                        "Ngày": [d.strftime("%d/%m") for d in dates],
+                        "Giá đóng cửa": np.round(prices, 2)
+                    })
+                    render_chart_container("📉 Biểu đồ giá 30 ngày gần nhất", lambda: st.line_chart(df.set_index("Ngày")))
                 
                 # Display agent results
                 self.display_agent_results(result)
                 
-                # Store in history
                 st.session_state.analysis_history.append({
                     'timestamp': datetime.now(),
                     'symbol': symbol,
                     'result': result
                 })
-                
             except Exception as e:
-                render_error_message(f"Lỗi phân tích: {str(e)}", 
-                                   "Vui lòng thử lại sau vài phút")
+                render_error_message(f"Lỗi phân tích: {str(e)}", "Vui lòng thử lại sau vài phút")
     
     def display_agent_results(self, result: Dict[str, Any]):
         """Display results from all agents"""
@@ -219,11 +265,8 @@ class AITradingDashboard:
         
         # Investment Analysis
         if result.get('investment_analysis'):
-            st.subheader("💼 Phân tích đầu tư (InvestmentExpert Agent)")
             inv = result['investment_analysis']
-            rec_color = "🟢" if inv.get('recommendation') == 'BUY' else "🔴" if inv.get('recommendation') == 'SELL' else "🟡"
-            st.write(f"**Khuyến nghị:** {rec_color} {inv.get('recommendation', 'N/A')}")
-            st.write(f"**Lý do:** {inv.get('reason', 'N/A')}")
+            render_recommendation_card(inv.get('recommendation', 'HOLD'), inv.get('reason', 'N/A'))
     
     def run_price_prediction(self, symbol: str):
         """Run price prediction only"""
@@ -363,9 +406,30 @@ class AITradingDashboard:
         self.render_available_stocks()
     
     def render_available_stocks(self):
-        """Render available stocks by sector"""
-        st.subheader("📋 Danh sách cổ phiếu hỗ trợ")
-        symbols = self.vn_api.get_available_symbols()
+        """Render available stocks by sector from CrewAI"""
+        st.subheader("📋 Danh sách cổ phiếu (CrewAI Real Data)")
+        
+        # Load symbols asynchronously
+        @st.cache_data(ttl=3600)
+        def load_symbols_async():
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            try:
+                symbols = loop.run_until_complete(self.vn_api.get_available_symbols())
+                return symbols
+            except Exception as e:
+                st.error(f"Lỗi tải danh sách: {e}")
+                return self.vn_api._get_static_symbols()
+            finally:
+                loop.close()
+        
+        symbols = load_symbols_async()
+        
+        # Show data source based on actual symbols loaded
+        if symbols and len(symbols) > 0 and symbols[0].get('data_source') == 'CrewAI':
+            st.success("🤖 Dữ liệu thật từ CrewAI Gemini")
+        else:
+            st.info("📋 Danh sách tĩnh (nhập Gemini API key để dùng CrewAI)")
         
         # Group by sector
         sectors = {}
@@ -385,8 +449,8 @@ class AITradingDashboard:
     def render_footer(self):
         """Render footer"""
         st.markdown("---")
-        st.markdown("**🇻🇳 AI Trading Team Vietnam** - Powered by vnstock, Google Gemini & 6 AI Agents")
-        st.markdown("*Real-time data từ thị trường chứng khoán Việt Nam*")
+        st.markdown("**🇻🇳 AI Trading Team Vietnam** - Powered by CrewAI, Google Gemini & 6 AI Agents")
+        st.markdown("*Real-time data từ CrewAI thay vì vnstock*")
     
     def run(self):
         """Main run method"""

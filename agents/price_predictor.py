@@ -8,39 +8,69 @@ class PricePredictor:
     
     def predict_price(self, symbol: str, days: int = 30):
         try:
-            # Check if VN stock - use fallback data
-            vn_stocks = ['VCB', 'BID', 'CTG', 'TCB', 'ACB', 'VIC', 'VHM', 'VRE', 'DXG', 'MSN', 'MWG', 'VNM', 'SAB', 'HPG', 'GAS', 'PLX', 'FPT']
+            # Import VN API to check if VN stock
+            import sys
+            import os
+            sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+            from src.data.vn_stock_api import VNStockAPI
             
-            if symbol.upper() in vn_stocks:
-                # Mock prediction for VN stocks
-                import random
-                base_prices = {
-                    'VCB': 85000, 'BID': 45000, 'CTG': 35000, 'TCB': 55000,
-                    'VIC': 90000, 'VHM': 75000, 'MSN': 120000, 'MWG': 80000,
-                    'HPG': 25000, 'FPT': 95000, 'VNM': 85000, 'GAS': 95000
-                }
+            vn_api = VNStockAPI()
+            
+            if vn_api.is_vn_stock(symbol):
+                from vnstock import Vnstock
+                from datetime import datetime, timedelta
                 
-                current_price = base_prices.get(symbol.upper(), 50000)
-                trend_factor = random.uniform(0.95, 1.08)
-                predicted_price = current_price * trend_factor
-                trend = "bullish" if trend_factor > 1.02 else "bearish" if trend_factor < 0.98 else "neutral"
+                stock_obj = Vnstock().stock(symbol=symbol, source='VCI')
+                
+                # Lấy dữ liệu lịch sử 1 năm
+                end_date = datetime.now().strftime('%Y-%m-%d')
+                start_date = (datetime.now() - timedelta(days=365)).strftime('%Y-%m-%d')
+                
+                hist_data = stock_obj.quote.history(start=start_date, end=end_date, interval='1D')
+                
+                if hist_data.empty:
+                    return {"error": f"No data found for {symbol}"}
+                
+                # Tính toán technical indicators
+                current_price = hist_data['close'].iloc[-1]
+                ma_20 = hist_data['close'].rolling(20).mean().iloc[-1]
+                ma_50 = hist_data['close'].rolling(50).mean().iloc[-1]
+                
+                # Phân tích xu hướng
+                if ma_20 > ma_50:
+                    trend = "bullish"
+                    predicted_price = current_price * 1.05
+                    confidence = "high"
+                elif ma_20 < ma_50:
+                    trend = "bearish"
+                    predicted_price = current_price * 0.95
+                    confidence = "high"
+                else:
+                    trend = "neutral"
+                    predicted_price = current_price * 1.01
+                    confidence = "medium"
                 
                 return {
                     "symbol": symbol,
-                    "current_price": current_price,
+                    "current_price": round(current_price, -2),
                     "predicted_price": round(predicted_price, -2),
                     "trend": trend,
-                    "confidence": "medium",
+                    "confidence": confidence,
                     "timeframe": f"{days} days",
-                    "market": "Vietnam"
+                    "market": "Vietnam",
+                    "data_source": "VCI_Real"
                 }
+            
+            # Kiểm tra xem có phải mã hợp lệ không
+            if not self._is_valid_symbol(symbol):
+                return {"error": f"Invalid symbol: {symbol}"}
             
             # US/International stocks
             ticker = yf.Ticker(symbol)
             hist = ticker.history(period="1y")
             
             if hist.empty:
-                return {"error": f"No data found for {symbol}"}
+                return {"error": f"No data found for {symbol} - may be delisted or invalid"}
             
             # Simple moving average prediction
             ma_20 = hist['Close'].rolling(window=20).mean().iloc[-1]
@@ -67,3 +97,15 @@ class PricePredictor:
             }
         except Exception as e:
             return {"error": str(e)}
+    
+    def _is_valid_symbol(self, symbol: str) -> bool:
+        """Kiểm tra symbol hợp lệ"""
+        if not symbol or len(symbol) < 1:
+            return False
+        
+        # Loại bỏ các mã biết là không hợp lệ
+        invalid_symbols = ['X20', 'X21', 'X22', 'X23', 'X24', 'X25', 'TEST', 'DEMO']
+        if symbol.upper() in invalid_symbols:
+            return False
+        
+        return True
