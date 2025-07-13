@@ -3,6 +3,7 @@ from agents.ticker_news import TickerNews
 from agents.market_news import MarketNews
 from agents.investment_expert import InvestmentExpert
 from agents.risk_expert import RiskExpert
+from agents.stock_info import StockInfoDisplay
 from gemini_agent import GeminiAgent
 from src.data.vn_stock_api import VNStockAPI
 from src.utils.error_handler import handle_async_errors, AgentErrorHandler, validate_symbol
@@ -19,6 +20,7 @@ class MainAgent:
         self.market_news = MarketNews()
         self.investment_expert = InvestmentExpert()
         self.risk_expert = RiskExpert()
+        self.stock_info = StockInfoDisplay(vn_api)
         self.vn_api = vn_api
         
         # Initialize Gemini with API key if provided
@@ -87,6 +89,7 @@ class MainAgent:
                 logger.info(f"{symbol} is Vietnamese stock, using VN API")
                 tasks['vn_stock_data'] = self.vn_api.get_stock_data(symbol)
                 tasks['ticker_news'] = self.vn_api.get_news_sentiment(symbol)
+                tasks['detailed_stock_info'] = self.stock_info.get_detailed_stock_data(symbol)
                 market_type = 'Vietnam'
             else:
                 # Kiểm tra xem có phải là mã hợp lệ cho international market không
@@ -285,7 +288,8 @@ class MainAgent:
             'ticker_news': AgentErrorHandler.handle_news_error(symbol, error),
             'risk_assessment': AgentErrorHandler.handle_risk_error(symbol, error),
             'investment_analysis': {"error": f"Lỗi phân tích đầu tư: {str(error)}"},
-            'vn_stock_data': {"error": f"Lỗi dữ liệu VN: {str(error)}"}
+            'vn_stock_data': {"error": f"Lỗi dữ liệu VN: {str(error)}"},
+            'detailed_stock_info': {"error": f"Lỗi thông tin chi tiết: {str(error)}"}
         }
         return fallbacks.get(task_name, {"error": f"Lỗi {task_name}: {str(error)}"})
     
@@ -312,3 +316,27 @@ class MainAgent:
                 return True
         
         return False
+    
+    async def get_detailed_stock_info(self, symbol: str):
+        """Lấy thông tin chi tiết cổ phiếu từ stock_info module"""
+        try:
+            return await self.stock_info.get_detailed_stock_data(symbol)
+        except Exception as e:
+            logger.error(f"Error getting detailed stock info for {symbol}: {e}")
+            return {"error": f"Lỗi lấy thông tin chi tiết: {str(e)}"}
+    
+    def display_stock_header(self, stock_data, current_time: str):
+        """Display stock header - delegate to stock_info"""
+        return self.stock_info.display_stock_header(stock_data, current_time)
+    
+    def display_detailed_metrics(self, detailed_data):
+        """Display detailed metrics - delegate to stock_info"""
+        return self.stock_info.display_detailed_metrics(detailed_data)
+    
+    def display_financial_ratios(self, detailed_data):
+        """Display financial ratios - delegate to stock_info"""
+        return self.stock_info.display_financial_ratios(detailed_data)
+    
+    def display_price_chart(self, price_history, symbol):
+        """Display price chart - delegate to stock_info"""
+        return self.stock_info.display_price_chart(price_history, symbol)

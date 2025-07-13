@@ -127,7 +127,7 @@ class VNStockAPI:
 
     async def get_stock_data(self, symbol: str, force_refresh: bool = False) -> Optional[VNStockData]:
         """
-        Lấy stock data cho một symbol - chỉ dùng mock data
+        Lấy stock data thật từ vnstock API
         """
         if not symbol:
             return None
@@ -138,8 +138,13 @@ class VNStockAPI:
                 logger.info(f"📋 Using cached data for {symbol}")
                 return self.cache[cache_key]['data']
 
-            # Chỉ dùng mock data để tránh lỗi vnstock
-            data = self._generate_mock_data(symbol)
+            # Ưu tiên real data từ vnstock
+            data = await self._fetch_vnstock_data(symbol)
+            
+            # Fallback to mock nếu real data fail
+            if not data:
+                logger.warning(f"⚠️ Real data failed for {symbol}, using mock")
+                data = self._generate_mock_data(symbol)
             
             self.cache[cache_key] = {
                 'data': data,
@@ -148,7 +153,7 @@ class VNStockAPI:
             return data
             
         except Exception as e:
-            logger.error(f"❌ Error generating mock data for {symbol}: {e}")
+            logger.error(f"❌ Error fetching data for {symbol}: {e}")
             return self._generate_mock_data(symbol)
     
     async def _fetch_vnstock_data(self, symbol: str) -> Optional[VNStockData]:
@@ -241,18 +246,32 @@ class VNStockAPI:
             return None
     
     def _generate_mock_data(self, symbol: str) -> VNStockData:
+        """Fallback mock data với cảnh báo rõ ràng"""
         import random
         stock_info = self.vn_stocks.get(symbol, {'name': symbol, 'sector': 'Unknown', 'exchange': 'HOSE'})
-        base_prices = {'VCB': 85000, 'BID': 45000, 'VIC': 90000, 'HPG': 25000, 'FPT': 95000}
-        base_price = base_prices.get(symbol, 50000)
-        current_price = base_price * (1 + random.uniform(-0.05, 0.05))
+        
+        # Giá gần thật hơn cho các mã chính
+        real_prices = {
+            'VCB': 87500, 'BID': 47200, 'CTG': 35800, 'TCB': 24900, 'ACB': 23400,
+            'VIC': 92300, 'VHM': 45600, 'VRE': 28700, 'DXG': 15200,
+            'MSN': 89400, 'MWG': 67800, 'VNM': 78900, 'SAB': 156000,
+            'HPG': 26700, 'GAS': 89500, 'PLX': 45300, 'FPT': 98200
+        }
+        
+        base_price = real_prices.get(symbol, 50000)
+        # Biến động nhỏ hơn cho thực tế
+        current_price = base_price * (1 + random.uniform(-0.02, 0.02))
         change = current_price - base_price
+        
+        logger.warning(f"⚠️ Using MOCK data for {symbol} - Not suitable for real trading!")
         
         return VNStockData(
             symbol=symbol, price=round(current_price, -2), change=round(change, -2),
             change_percent=round((change / base_price) * 100, 2),
-            volume=random.randint(50000, 2000000), market_cap=random.randint(5000, 200000),
-            pe_ratio=round(random.uniform(8, 25), 1), pb_ratio=round(random.uniform(0.8, 3.0), 1),
+            volume=random.randint(100000, 1500000), 
+            market_cap=random.randint(10000, 150000),
+            pe_ratio=round(random.uniform(10, 20), 1), 
+            pb_ratio=round(random.uniform(1.0, 2.5), 1),
             sector=stock_info['sector'], exchange=stock_info['exchange']
         )
     
