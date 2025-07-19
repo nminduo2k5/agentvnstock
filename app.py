@@ -54,8 +54,8 @@ async def display_comprehensive_analysis(result, symbol, time_horizon="Trung h�
             st.error(detailed_info['error'])
     
     # Display AI analysis results with investment context
-    time_days = {"Ngắn hạn": 180, "Trung hạn": 720, "Dài hạn": 1095}
-    investment_days = time_days.get(time_horizon, 720)
+    time_days = {"Ngắn hạn": 60, "Trung hạn": 180, "Dài hạn": 365}
+    investment_days = time_days.get(time_horizon, 180)
     
     st.subheader(f"🤖 Phân tích AI - {time_horizon} ({investment_days} ngày)")
     
@@ -352,9 +352,9 @@ with st.sidebar:
     # Time horizon selection
     time_horizon = st.selectbox(
         "🕐 Thời gian đầu tư:",
-        options=["Ngắn hạn", "Trung hạn", "Dài hạn"],
+        options=["Ngắn hạn: 1-2 tháng", "Trung hạn: 3-6 tháng", "Dài hạn: 6+ tháng"],
         index=1,
-        help="Ngắn hạn: 1-6 tháng | Trung hạn: 6-24 tháng | Dài hạn: 2+ năm"
+        help="Ngắn hạn: 1-2 tháng | Trung hạn: 3-6 tháng | Dài hạn: 6+ tháng"
     )
     
     # Risk tolerance slider
@@ -367,6 +367,20 @@ with st.sidebar:
         help="0: Rất thận trọng | 50: Cân bằng | 100: Rủi ro cao"
     )
     
+    # Investment amount input
+    investment_amount = st.number_input(
+        "💰 Số tiền đầu tư (VNĐ):",
+        min_value=1_000_000,
+        max_value=10_000_000_000,
+        value=100_000_000,
+        step=10_000_000,
+        format="%d",
+        help="Nhập số tiền bạn muốn đầu tư để nhận phân tích phù hợp"
+    )
+    
+    # Format investment amount for display
+    formatted_amount = f"{investment_amount:,} VNĐ"
+    
     # Display risk level
     if risk_tolerance <= 30:
         risk_label = "🟢 Thận trọng"
@@ -375,7 +389,7 @@ with st.sidebar:
     else:
         risk_label = "🔴 Tích cực"
     
-    st.write(f"**Hồ sơ rủi ro:** {risk_label} ({risk_tolerance}%)")
+    st.write(f"**Hồ sơ đầu tư:** {risk_label} ({risk_tolerance}%) | {formatted_amount}")
     
     st.divider()
     
@@ -475,7 +489,7 @@ with tab1:
                 st.error(f"❌ {result['error']}")
             else:
                 # Display investment settings
-                st.info(f"⚙️ **Cài đặt:** {time_horizon} | Rủi ro: {risk_tolerance}% ({risk_label})")
+                st.info(f"⚙️ **Cài đặt:** {time_horizon} | Rủi ro: {risk_tolerance}% ({risk_label}) | Số tiền: {investment_amount:,} VNĐ")
                 
                 # Display comprehensive results with real data
                 loop = asyncio.new_event_loop()
@@ -725,73 +739,176 @@ with tab4:
 
 
 with tab6:
-    st.header("🤖 Tin tức nâng cao (CrewAI)")
-    st.markdown("**Tin tức thật với phân tích AI nâng cao**")
+    st.header(f"🤖 Thông tin nâng cao về {symbol}")
+    st.markdown("**Thông tin công ty và phân tích AI nâng cao**")
     
     if not main_agent.vn_api.crewai_collector or not main_agent.vn_api.crewai_collector.enabled:
         st.warning("⚠️ Cần cài đặt CrewAI để sử dụng tính năng này")
         st.info("💡 Click 'Cài đặt CrewAI' ở sidebar")
     else:
-        col1, col2 = st.columns(2)
+        # Company Information Section
+        st.subheader(f"🏢 Thông tin về {symbol}")
         
-        with col1:
-            if st.button(f"📰 Tin tức {symbol}", use_container_width=True):
-                with st.spinner(f"🤖 CrewAI đang phân tích tin tức {symbol}..."):
-                    try:
-                        from agents.enhanced_news_agent import create_enhanced_news_agent
-                        enhanced_agent = create_enhanced_news_agent(main_agent.gemini_agent.api_key if main_agent.gemini_agent else None)
+        with st.spinner(f"🔍 Đang tìm kiếm thông tin chi tiết về {symbol}..."):
+            try:
+                from agents.enhanced_news_agent import create_enhanced_news_agent
+                enhanced_agent = create_enhanced_news_agent(main_agent.gemini_agent.api_key if main_agent.gemini_agent else None)
+                
+                loop = asyncio.new_event_loop()
+                asyncio.set_event_loop(loop)
+                company_data = loop.run_until_complete(enhanced_agent.get_stock_news(symbol))
+                
+                # Lấy thông tin công ty và thông tin nội bộ
+                company_info = company_data.get('company_info', {})
+                internal_details = company_data.get('internal_details', {})
+                financial_metrics = company_data.get('financial_metrics', {})
+                
+                # Hiển thị thông tin cơ bản
+                st.markdown(f"""
+                <div style="
+                    background: linear-gradient(135deg, #e3f2fd, #bbdefb);
+                    padding: 20px;
+                    border-radius: 10px;
+                    margin: 10px 0 20px 0;
+                    border-left: 5px solid #1976d2;
+                ">
+                    <h3 style="margin: 0 0 10px 0; color: #1976d2;">{company_info.get('full_name', symbol)}</h3>
+                    <p><strong>Mã cổ phiếu:</strong> {symbol}</p>
+                    <p><strong>Tên tiếng Anh:</strong> {internal_details.get('english_name', 'N/A')}</p>
+                    <p><strong>Ngành:</strong> {company_info.get('sector', 'N/A')}</p>
+                    <p><strong>Website:</strong> <a href="https://{internal_details.get('website', '#')}" target="_blank">{internal_details.get('website', 'N/A')}</a></p>
+                </div>
+                """, unsafe_allow_html=True)
+                
+                # Hiển thị thông tin chi tiết trong tabs
+                detail_tab1, detail_tab2, detail_tab3 = st.tabs(["Thông tin chi tiết", "Chỉ số tài chính", "Ban lãnh đạo"])
+                
+                with detail_tab1:
+                    col1, col2 = st.columns(2)
+                    with col1:
+                        st.markdown("**Thông tin liên hệ**")
+                        st.write(f"**Địa chỉ:** {internal_details.get('address', 'N/A')}")
+                        st.write(f"**Điện thoại:** {internal_details.get('phone', 'N/A')}")
+                        st.write(f"**Email:** {internal_details.get('email', 'N/A')}")
+                        st.write(f"**Fax:** {internal_details.get('fax', 'N/A')}")
+                    
+                    with col2:
+                        st.markdown("**Thông tin doanh nghiệp**")
+                        st.write(f"**Ngày thành lập:** {internal_details.get('established_date', 'N/A')}")
+                        st.write(f"**Ngày niêm yết:** {internal_details.get('listing_date', 'N/A')}")
+                        st.write(f"**Mã số thuế:** {internal_details.get('tax_code', 'N/A')}")
+                        st.write(f"**Vốn điều lệ:** {internal_details.get('charter_capital', 'N/A')}")
+                    
+                    st.markdown("**Lĩnh vực kinh doanh**")
+                    st.write(internal_details.get('business_areas', 'N/A'))
+                    
+                    if internal_details.get('subsidiaries'):
+                        st.markdown("**Công ty con**")
+                        for sub in internal_details['subsidiaries']:
+                            st.markdown(f"- {sub}")
+                
+                with detail_tab2:
+                    if financial_metrics:
+                        col1, col2, col3 = st.columns(3)
+                        with col1:
+                            st.metric("Vốn hóa", financial_metrics.get('market_cap', 'N/A'))
+                            st.metric("P/E", financial_metrics.get('pe_ratio', 'N/A'))
+                        with col2:
+                            st.metric("ROE", financial_metrics.get('roe', 'N/A'))
+                            st.metric("P/B", financial_metrics.get('pb_ratio', 'N/A'))
+                        with col3:
+                            st.metric("Tỷ suất cổ tức", financial_metrics.get('dividend_yield', 'N/A'))
+                            st.metric("Tăng trưởng doanh thu", financial_metrics.get('revenue_growth', 'N/A'))
+                    else:
+                        st.info("Chưa có dữ liệu tài chính cho mã này")
+                
+                with detail_tab3:
+                    if internal_details.get('key_executives'):
+                        for exec in internal_details['key_executives']:
+                            st.markdown(f"**{exec['name']}** - {exec['position']}")
+                    else:
+                        st.info("Chưa có thông tin về ban lãnh đạo")
+            except Exception as e:
+                st.error(f"Lỗi khi lấy thông tin chi tiết: {e}")
+                
+                # Fallback to basic info
+                company_info = None
+                for s in symbols:
+                    if s['symbol'] == symbol:
+                        company_info = s
+                        break
+                
+                if company_info:
+                    st.markdown(f"""
+                    <div style="
+                        background: linear-gradient(135deg, #e3f2fd, #bbdefb);
+                        padding: 20px;
+                        border-radius: 10px;
+                        margin: 10px 0 20px 0;
+                        border-left: 5px solid #1976d2;
+                    ">
+                        <h3 style="margin: 0 0 10px 0; color: #1976d2;">{company_info['name']}</h3>
+                        <p><strong>Mã cổ phiếu:</strong> {company_info['symbol']}</p>
+                        <p><strong>Ngành:</strong> {company_info.get('sector', 'N/A')}</p>
+                        <p><strong>Loại:</strong> {company_info.get('type', 'Cổ phiếu')}</p>
+                        <p><strong>Nguồn dữ liệu:</strong> {company_info.get('data_source', 'Static')}</p>
+                    </div>
+                    """, unsafe_allow_html=True)
+                else:
+                    st.info(f"Không tìm thấy thông tin chi tiết về {symbol}")
+        
+        # News Analysis Section
+        st.subheader(f"📰 Phân tích tin tức về {symbol}")
+        
+        if st.button(f"📰 Phân tích tin tức {symbol}", type="primary"):
+            with st.spinner(f"🤖 CrewAI đang phân tích tin tức {symbol}..."):
+                try:
+                    from agents.enhanced_news_agent import create_enhanced_news_agent
+                    enhanced_agent = create_enhanced_news_agent(main_agent.gemini_agent.api_key if main_agent.gemini_agent else None)
+                    
+                    loop = asyncio.new_event_loop()
+                    asyncio.set_event_loop(loop)
+                    enhanced_news = loop.run_until_complete(enhanced_agent.get_stock_news(symbol))
+                    
+                    if enhanced_news.get('error'):
+                        st.error(f"❌ {enhanced_news['error']}")
+                    else:
+                        # Display sentiment in a colored box
+                        sentiment = enhanced_news.get('sentiment', 'Neutral')
+                        sentiment_color = "#4caf50" if sentiment == "Positive" else "#f44336" if sentiment == "Negative" else "#ff9800"
                         
-                        loop = asyncio.new_event_loop()
-                        asyncio.set_event_loop(loop)
-                        enhanced_news = loop.run_until_complete(enhanced_agent.get_stock_news(symbol))
+                        st.markdown(f"""
+                        <div style="
+                            background: {sentiment_color}22;
+                            padding: 15px;
+                            border-radius: 10px;
+                            margin: 10px 0;
+                            text-align: center;
+                            border-left: 5px solid {sentiment_color};
+                        ">
+                            <h3 style="margin: 0; color: {sentiment_color};">Sentiment: {sentiment}</h3>
+                        </div>
+                        """, unsafe_allow_html=True)
                         
-                        if enhanced_news.get('error'):
-                            st.error(f"❌ {enhanced_news['error']}")
-                        else:
-                            st.success(f"✅ Phân tích hoàn tất - Sentiment: {enhanced_news.get('sentiment', 'N/A')}")
-                            
-                            # Analysis summary
-                            analysis = enhanced_news.get('analysis', {})
+                        # Analysis summary
+                        analysis = enhanced_news.get('analysis', {})
+                        col1, col2 = st.columns(2)
+                        
+                        with col1:
                             st.info(f"📈 **Tác động:** {analysis.get('impact_level', 'N/A')}")
-                            st.write(f"**Khuyến nghị:** {analysis.get('recommendation', 'N/A')}")
-                            
-                            # Headlines
-                            if enhanced_news.get('headlines'):
-                                st.subheader("📰 Tiêu đề chính")
-                                for headline in enhanced_news['headlines']:
-                                    st.write(f"• {headline}")
-                    except Exception as e:
-                        st.error(f"❌ Lỗi CrewAI: {e}")
+                        
+                        with col2:
+                            st.info(f"**Khuyến nghị:** {analysis.get('recommendation', 'N/A')}")
+                        
+                        # Headlines
+                        if enhanced_news.get('headlines'):
+                            st.subheader("📰 Tiêu đề chính")
+                            for headline in enhanced_news['headlines']:
+                                st.markdown(f"<div style='padding: 8px 0; border-bottom: 1px solid #eee;'>• {headline}</div>", unsafe_allow_html=True)
+                except Exception as e:
+                    st.error(f"❌ Lỗi CrewAI: {e}")
         
-        with col2:
-            if st.button("🌍 Tin thị trường", use_container_width=True):
-                with st.spinner("🤖 CrewAI đang phân tích thị trường..."):
-                    try:
-                        from agents.enhanced_news_agent import create_enhanced_news_agent
-                        enhanced_agent = create_enhanced_news_agent(main_agent.gemini_agent.api_key if main_agent.gemini_agent else None)
-                        
-                        loop = asyncio.new_event_loop()
-                        asyncio.set_event_loop(loop)
-                        market_analysis = loop.run_until_complete(enhanced_agent.get_market_news())
-                        
-                        if market_analysis.get('error'):
-                            st.error(f"❌ {market_analysis['error']}")
-                        else:
-                            st.success("✅ Phân tích thị trường hoàn tất")
-                            
-                            # Market analysis
-                            market_data = market_analysis.get('market_analysis', {})
-                            st.info(f"📈 **Sentiment thị trường:** {market_data.get('sentiment', 'N/A')}")
-                            st.write(f"**Rủi ro:** {market_data.get('risk_level', 'N/A')}")
-                            st.write(f"**Khuyến nghị giao dịch:** {market_data.get('trading_recommendation', 'N/A')}")
-                            
-                            # Key themes
-                            if market_data.get('key_themes'):
-                                st.subheader("📈 Chủ đề chính")
-                                for theme in market_data['key_themes']:
-                                    st.write(f"• {theme}")
-                    except Exception as e:
-                        st.error(f"❌ Lỗi CrewAI: {e}")
+        
 
 with tab7:
     st.header("🌏 Tin tức quốc tế")
