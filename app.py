@@ -420,13 +420,13 @@ with st.sidebar:
     symbol = selected_symbol.split(" - ")[0]
 
 # Main content tabs
-tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
+tab1, tab2, tab3, tab4, tab6, tab7 = st.tabs([
     "📊 Phân tích cổ phiếu", 
     "💬 AI Chatbot", 
     "📈 Thị trường VN",
     "📰 Tin tức cổ phiếu",
-    "🌍 Tin tức thị trường", 
-    "🤖 Tin tức nâng cao"
+    "🤖 Tin tức nâng cao",
+    "🌏 Tin tức quốc tế"
 ])
 
 with tab1:
@@ -631,6 +631,7 @@ with tab3:
                         """, unsafe_allow_html=True)
     
     # Available VN stocks from CrewAI
+    st.markdown("---")  # Separator
     st.subheader("📋 Danh sách cổ phiếu (CrewAI Real Data)")
     
     # Show data source
@@ -667,38 +668,13 @@ with tab3:
                     </div>
                     """, unsafe_allow_html=True)
 
-with tab4:
-    st.header("📰 Tin tức cổ phiếu")
-    st.markdown(f"**Tin tức mới nhất về {symbol}**")
+    # Add market news section to the same tab
+    st.markdown("---")  # Separator
+    st.subheader("VN Tin tức thị trường")
+    st.markdown("**Tin tức tổng quan thị trường VN**")
     
-    if st.button("🔄 Cập nhật tin tức", type="primary"):
-        with st.spinner(f"📰 Đang lấy tin tức cho {symbol}..."):
-            loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(loop)
-            news_data = loop.run_until_complete(asyncio.to_thread(main_agent.ticker_news.get_ticker_news, symbol, 10))
-            
-            if news_data.get('error'):
-                st.error(f"❌ {news_data['error']}")
-            else:
-                st.success(f"✅ Tìm thấy {news_data.get('news_count', 0)} tin tức")
-                
-                for i, news in enumerate(news_data.get('news', []), 1):
-                    with st.expander(f"📰 {i}. {news.get('title', 'Không có tiêu đề')}"):
-                        col1, col2 = st.columns([3, 1])
-                        with col1:
-                            st.write(f"**Nội dung:** {news.get('summary', 'Không có tóm tắt')}")
-                            if news.get('link'):
-                                st.markdown(f"[🔗 Đọc thêm]({news['link']})")
-                        with col2:
-                            st.write(f"**Nguồn:** {news.get('publisher', 'N/A')}")
-                            st.write(f"**Thời gian:** {news.get('published', 'N/A')}")
-
-with tab5:
-    st.header("🌍 Tin tức thị trường")
-    st.markdown("**Tin tức tổng quan thị trường quốc tế**")
-    
-    if st.button("🔄 Cập nhật tin thị trường", type="primary"):
-        with st.spinner("🌍 Đang lấy tin tức thị trường..."):
+    if st.button("🔄 Cập nhật tin thị trường", type="secondary"):
+        with st.spinner("VN Đang lấy tin tức thị trường..."):
             loop = asyncio.new_event_loop()
             asyncio.set_event_loop(loop)
             market_news = loop.run_until_complete(asyncio.to_thread(main_agent.market_news.get_market_news))
@@ -720,6 +696,33 @@ with tab5:
                             st.write(f"**Nguồn:** {news.get('publisher', 'N/A')}")
                             st.write(f"**Thời gian:** {news.get('published', 'N/A')}")
                             st.write(f"**Thị trường:** {news.get('source_index', 'N/A')}")
+
+with tab4:
+    st.header("📰 Tin tức cổ phiếu")
+    st.markdown(f"**Tin tức mới nhất về {symbol}**")
+    
+    if st.button("🔄 Cập nhật tin tức", type="primary"):
+        with st.spinner(f"📰 Đang lấy tin tức cho {symbol}..."):
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            news_data = loop.run_until_complete(asyncio.to_thread(main_agent.ticker_news.get_ticker_news, symbol, 10))
+            
+            if news_data.get('error'):
+                st.error(f"❌ {news_data['error']}")
+            else:
+                st.success(f"✅ Tìm thấy {news_data.get('news_count', 0)} tin tức")
+                
+                for i, news in enumerate(news_data.get('news', []), 1):
+                    with st.expander(f"📰 {i}. {news.get('title', 'Không có tiêu đề')}"):
+                        col1, col2 = st.columns([3, 1])
+                        with col1:
+                            st.write(f"**Tóm tắt:** {news.get('summary', 'Không có tóm tắt')}")
+                            if news.get('link'):
+                                st.markdown(f"[🔗 Đọc thêm]({news['link']})")
+                        with col2:
+                            st.write(f"**Nguồn:** {news.get('publisher', 'N/A')}")
+                            st.write(f"**Thời gian:** {news.get('published', 'N/A')}")
+
 
 with tab6:
     st.header("🤖 Tin tức nâng cao (CrewAI)")
@@ -789,6 +792,35 @@ with tab6:
                                     st.write(f"• {theme}")
                     except Exception as e:
                         st.error(f"❌ Lỗi CrewAI: {e}")
+
+with tab7:
+    st.header("🌏 Tin tức quốc tế")
+    st.markdown("**Tin tức thị trường quốc tế mới nhất từ CafeF.vn**")
+    
+    if st.button("🔄 Cập nhật tin quốc tế", type="primary"):
+        with st.spinner("🌏 Đang lấy tin tức quốc tế..."):
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            international_news = loop.run_until_complete(main_agent.get_international_news())
+            
+            if international_news.get('error'):
+                st.error(f"❌ {international_news['error']}")
+            else:
+                source = international_news.get('source', 'Unknown')
+                news_count = international_news.get('news_count', 0)
+                st.success(f"✅ Tìm thấy {news_count} tin tức quốc tế từ {source}")
+                
+                for i, news in enumerate(international_news.get('news', []), 1):
+                    with st.expander(f"🌏 {i}. {news.get('title', 'Không có tiêu đề')}"):
+                        col1, col2 = st.columns([3, 1])
+                        with col1:
+                            st.write(f"**Tóm tắt:** {news.get('summary', 'Không có tóm tắt')}")
+                            if news.get('link'):
+                                st.markdown(f"[🔗 Đọc thêm]({news['link']})")
+                        with col2:
+                            st.write(f"**Nguồn:** {news.get('publisher', 'N/A')}")
+                            st.write(f"**Thời gian:** {news.get('published', 'N/A')}")
+                            st.write(f"**Thị trường:** {news.get('source_index', 'N/A')}")
 
 # Footer
 st.markdown("---")

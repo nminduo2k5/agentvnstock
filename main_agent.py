@@ -4,6 +4,7 @@ from agents.market_news import MarketNews
 from agents.investment_expert import InvestmentExpert
 from agents.risk_expert import RiskExpert
 from agents.stock_info import StockInfoDisplay
+from agents.international_news import InternationalMarketNews
 from gemini_agent import GeminiAgent
 from src.data.vn_stock_api import VNStockAPI
 from src.utils.error_handler import handle_async_errors, AgentErrorHandler, validate_symbol
@@ -21,6 +22,7 @@ class MainAgent:
         self.investment_expert = InvestmentExpert()
         self.risk_expert = RiskExpert()
         self.stock_info = StockInfoDisplay(vn_api)
+        self.international_news = InternationalMarketNews()
         self.vn_api = vn_api
         
         # Initialize Gemini with API key if provided
@@ -134,7 +136,7 @@ class MainAgent:
         
         try:
             # Chạy tác vụ đồng bộ và bất đồng bộ song song với error handling
-            international_task = run_in_threadpool(self._safe_get_market_news)
+            international_task = run_in_threadpool(self._safe_get_international_market_news)
             vietnam_task = self.vn_api.get_market_overview()
 
             international_result, vietnam_result = await asyncio.gather(
@@ -280,6 +282,24 @@ class MainAgent:
         except Exception as e:
             logger.error(f"Market news error: {e}")
             return {"error": f"Lỗi lấy tin tức thị trường: {str(e)}"}
+    
+    def _safe_get_international_market_news(self):
+        """Safely get international market news"""
+        try:
+            return self.international_news.get_international_news()
+        except Exception as e:
+            logger.error(f"International market news error: {e}")
+            return {"error": f"Lỗi lấy tin tức thị trường quốc tế: {str(e)}"}
+    
+    @handle_async_errors(default_return={"error": "Lỗi hệ thống khi lấy tin tức quốc tế"})
+    async def get_international_news(self):
+        """Get international market news"""
+        try:
+            result = await run_in_threadpool(self._safe_get_international_market_news)
+            return result
+        except Exception as e:
+            logger.error(f"International news async error: {e}")
+            return {"error": f"Lỗi lấy tin tức thị trường quốc tế: {str(e)}"}
     
     def _get_error_fallback(self, task_name: str, symbol: str, error: Exception):
         """Get appropriate error fallback based on task type"""

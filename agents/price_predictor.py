@@ -152,3 +152,74 @@ class PricePredictor:
             return False
         
         return True
+    
+    def calculate_macd(self, data, fast=12, slow=26, signal=9):
+        """Calculate MACD indicator"""
+        try:
+            ema_fast = data['close'].ewm(span=fast).mean()
+            ema_slow = data['close'].ewm(span=slow).mean()
+            macd_line = ema_fast - ema_slow
+            signal_line = macd_line.ewm(span=signal).mean()
+            histogram = macd_line - signal_line
+            
+            return {
+                'macd': macd_line.iloc[-1],
+                'signal': signal_line.iloc[-1],
+                'histogram': histogram.iloc[-1],
+                'trend': 'bullish' if macd_line.iloc[-1] > signal_line.iloc[-1] else 'bearish'
+            }
+        except:
+            return {'macd': 0, 'signal': 0, 'histogram': 0, 'trend': 'neutral'}
+    
+    def calculate_bollinger_bands(self, data, period=20, std_dev=2):
+        """Calculate Bollinger Bands"""
+        try:
+            sma = data['close'].rolling(window=period).mean()
+            std = data['close'].rolling(window=period).std()
+            upper_band = sma + (std * std_dev)
+            lower_band = sma - (std * std_dev)
+            current_price = data['close'].iloc[-1]
+            
+            if current_price > upper_band.iloc[-1]:
+                position = 'overbought'
+            elif current_price < lower_band.iloc[-1]:
+                position = 'oversold'
+            else:
+                position = 'normal'
+            
+            return {
+                'upper': upper_band.iloc[-1],
+                'middle': sma.iloc[-1],
+                'lower': lower_band.iloc[-1],
+                'position': position
+            }
+        except:
+            return {'upper': 0, 'middle': 0, 'lower': 0, 'position': 'normal'}
+    
+    def calculate_stochastic(self, data, k_period=14, d_period=3):
+        """Calculate Stochastic Oscillator"""
+        try:
+            low_min = data['low'].rolling(window=k_period).min()
+            high_max = data['high'].rolling(window=k_period).max()
+            k_percent = 100 * ((data['close'] - low_min) / (high_max - low_min))
+            d_percent = k_percent.rolling(window=d_period).mean()
+            
+            k_current = k_percent.iloc[-1]
+            d_current = d_percent.iloc[-1]
+            
+            if k_current > 80:
+                signal = 'overbought'
+            elif k_current < 20:
+                signal = 'oversold'
+            else:
+                signal = 'neutral'
+            
+            return {
+                'k': k_current,
+                'd': d_current,
+                'signal': signal,
+                'crossover': 'bullish' if k_current > d_current else 'bearish'
+            }
+        except:
+            return {'k': 50, 'd': 50, 'signal': 'neutral', 'crossover': 'neutral'}
+    

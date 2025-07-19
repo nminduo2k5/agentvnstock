@@ -230,6 +230,124 @@ async def get_vn_symbols():
         print(f"Error in get_vn_symbols: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
+# Company Search API endpoints
+@app.get("/search/company/{company_name}")
+async def search_company(company_name: str):
+    """Search company by name"""
+    try:
+        from src.data.company_search_api import get_company_search_api
+        company_api = get_company_search_api()
+        result = await company_api.search_company(company_name)
+        return result
+    except Exception as e:
+        print(f"Error in search_company: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/search/symbol/{symbol}")
+async def search_by_symbol(symbol: str):
+    """Get company info by symbol"""
+    try:
+        from src.data.company_search_api import get_company_search_api
+        company_api = get_company_search_api()
+        result = await company_api.get_company_by_symbol(symbol)
+        return result
+    except Exception as e:
+        print(f"Error in search_by_symbol: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/search/sector/{sector}")
+async def search_by_sector(sector: str):
+    """Search companies by sector"""
+    try:
+        from src.data.company_search_api import get_company_search_api
+        company_api = get_company_search_api()
+        result = await company_api.search_companies_by_sector(sector)
+        return result
+    except Exception as e:
+        print(f"Error in search_by_sector: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+# International News API endpoints
+@app.get("/international-news/{keyword}")
+async def get_international_news(keyword: str, country: str = "US", limit: int = 5):
+    """Get international news by keyword"""
+    try:
+        from src.data.crewai_collector import get_crewai_collector
+        collector = get_crewai_collector()
+        result = await collector.get_international_news(keyword, country, limit)
+        return result
+    except Exception as e:
+        print(f"Error in get_international_news: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/enhanced-news/{symbol}")
+async def get_enhanced_news(symbol: str, limit: int = 5):
+    """Get enhanced news using CrewAI"""
+    try:
+        from src.data.crewai_collector import get_crewai_collector
+        collector = get_crewai_collector()
+        result = await collector.get_stock_news(symbol, limit)
+        return result
+    except Exception as e:
+        print(f"Error in get_enhanced_news: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/market-overview-news")
+async def get_market_overview_news():
+    """Get market overview news using CrewAI"""
+    try:
+        from src.data.crewai_collector import get_crewai_collector
+        collector = get_crewai_collector()
+        result = await collector.get_market_overview_news()
+        return result
+    except Exception as e:
+        print(f"Error in get_market_overview_news: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/generate-report/{symbol}")
+async def generate_investment_report(symbol: str, time_horizon: str = "Trung hạn", risk_tolerance: int = 50):
+    """Generate comprehensive investment report"""
+    if not main_agent:
+        raise HTTPException(status_code=503, detail="Service not initialized")
+    try:
+        # First analyze the stock
+        analysis_result = await main_agent.analyze_stock(symbol.upper(), time_horizon, risk_tolerance)
+        
+        if analysis_result.get('error'):
+            raise HTTPException(status_code=400, detail=analysis_result['error'])
+        
+        # Generate report files
+        report_result = await main_agent.generate_and_save_report(analysis_result, symbol.upper(), time_horizon, risk_tolerance)
+        
+        return report_result
+    except Exception as e:
+        print(f"Error in generate_investment_report: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/company-news/{symbol}")
+async def get_company_news(symbol: str):
+    """Get company information and news by stock symbol"""
+    try:
+        from agents.enhanced_news_agent import create_enhanced_news_agent
+        enhanced_agent = create_enhanced_news_agent()
+        result = await enhanced_agent.get_stock_news(symbol.upper())
+        return result
+    except Exception as e:
+        print(f"Error in get_company_news: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/sector-companies/{sector}")
+async def get_sector_companies(sector: str):
+    """Get companies by sector"""
+    try:
+        from agents.enhanced_news_agent import create_enhanced_news_agent
+        enhanced_agent = create_enhanced_news_agent()
+        result = await enhanced_agent.get_company_by_sector(sector)
+        return result
+    except Exception as e:
+        print(f"Error in get_sector_companies: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="127.0.0.1", port=8000)
