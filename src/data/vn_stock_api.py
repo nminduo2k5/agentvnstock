@@ -288,8 +288,10 @@ class VNStockAPI:
                 return self.cache[cache_key]['data']
             
             if self.stock:
-                # Lấy dữ liệu VN-Index
+                # Lấy dữ liệu các chỉ số
                 vn_index_data = await self._fetch_vnindex_vnstock()
+                vn30_index_data = await self._fetch_vn30index_vnstock()
+                hn_index_data = await self._fetch_hnindex_vnstock()
                 
                 # Lấy top movers
                 top_gainers, top_losers = await self._fetch_top_movers_vnstock()
@@ -304,6 +306,8 @@ class VNStockAPI:
                 
                 overview = {
                     'vn_index': vn_index_data,
+                    'vn30_index': vn30_index_data,
+                    'hn_index': hn_index_data,
                     'top_gainers': top_gainers,
                     'top_losers': top_losers,
                     'market_news': market_news or {
@@ -357,6 +361,64 @@ class VNStockAPI:
             logger.error(f"❌ Error fetching VN-Index: {e}")
             return {'value': 1200, 'change': 0, 'change_percent': 0}
     
+    async def _fetch_vn30index_vnstock(self) -> Dict[str, Any]:
+        """Fetch VN30-Index data từ VCI"""
+        try:
+            from vnstock import Vnstock
+            from datetime import datetime, timedelta
+            
+            stock_obj = Vnstock().stock(symbol='VN30', source='VCI')
+            end_date = datetime.now().strftime('%Y-%m-%d')
+            start_date = (datetime.now() - timedelta(days=5)).strftime('%Y-%m-%d')
+            
+            vn30_data = stock_obj.quote.history(start=start_date, end=end_date, interval='1D')
+            
+            if not vn30_data.empty:
+                latest = vn30_data.iloc[-1]
+                prev_day = vn30_data.iloc[-2] if len(vn30_data) > 1 else latest
+                
+                return {
+                    'value': round(float(latest['close']), 2),
+                    'change': round(float(latest['close'] - prev_day['close']), 2),
+                    'change_percent': round(float((latest['close'] - prev_day['close']) / prev_day['close'] * 100), 2),
+                    'volume': int(latest.get('volume', 0))
+                }
+            
+            return {'value': 1500, 'change': 0, 'change_percent': 0}
+            
+        except Exception as e:
+            logger.error(f"❌ Error fetching VN30-Index: {e}")
+            return {'value': 1500, 'change': 0, 'change_percent': 0}
+    
+    async def _fetch_hnindex_vnstock(self) -> Dict[str, Any]:
+        """Fetch HN-Index data từ VCI"""
+        try:
+            from vnstock import Vnstock
+            from datetime import datetime, timedelta
+            
+            stock_obj = Vnstock().stock(symbol='HNXINDEX', source='VCI')
+            end_date = datetime.now().strftime('%Y-%m-%d')
+            start_date = (datetime.now() - timedelta(days=5)).strftime('%Y-%m-%d')
+            
+            hnx_data = stock_obj.quote.history(start=start_date, end=end_date, interval='1D')
+            
+            if not hnx_data.empty:
+                latest = hnx_data.iloc[-1]
+                prev_day = hnx_data.iloc[-2] if len(hnx_data) > 1 else latest
+                
+                return {
+                    'value': round(float(latest['close']), 2),
+                    'change': round(float(latest['close'] - prev_day['close']), 2),
+                    'change_percent': round(float((latest['close'] - prev_day['close']) / prev_day['close'] * 100), 2),
+                    'volume': int(latest.get('volume', 0))
+                }
+            
+            return {'value': 230, 'change': 0, 'change_percent': 0}
+            
+        except Exception as e:
+            logger.error(f"❌ Error fetching HN-Index: {e}")
+            return {'value': 230, 'change': 0, 'change_percent': 0}
+    
     async def _fetch_sector_performance(self) -> Dict[str, float]:
         """Fetch sector performance"""
         import random
@@ -404,8 +466,26 @@ class VNStockAPI:
 
     
     def _generate_mock_market_overview(self) -> Dict[str, Any]:
+        import random
         return {
-            'vn_index': {'value': 1200, 'change': 0, 'change_percent': 0},
+            'vn_index': {
+                'value': round(1200 + random.uniform(-20, 20), 2),
+                'change': round(random.uniform(-10, 10), 2),
+                'change_percent': round(random.uniform(-1, 1), 2),
+                'volume': random.randint(1000000000, 2000000000)
+            },
+            'vn30_index': {
+                'value': round(1500 + random.uniform(-30, 30), 2),
+                'change': round(random.uniform(-15, 15), 2),
+                'change_percent': round(random.uniform(-1.5, 1.5), 2),
+                'volume': random.randint(800000000, 1500000000)
+            },
+            'hn_index': {
+                'value': round(230 + random.uniform(-5, 5), 2),
+                'change': round(random.uniform(-2, 2), 2),
+                'change_percent': round(random.uniform(-1, 1), 2),
+                'volume': random.randint(50000000, 150000000)
+            },
             'top_gainers': [{'symbol': 'FPT', 'change_percent': 4.2}],
             'top_losers': [{'symbol': 'VHM', 'change_percent': -2.1}],
             'market_news': {

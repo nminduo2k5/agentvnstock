@@ -1,8 +1,10 @@
 import google.generativeai as genai
 import os
+import logging
 from dotenv import load_dotenv
 
 load_dotenv()
+logger = logging.getLogger(__name__)
 
 class GeminiAgent:
     def __init__(self, api_key: str = None):
@@ -30,10 +32,16 @@ class GeminiAgent:
             raise ValueError(f"API key test failed: {str(e)}")
     
     def generate_expert_advice(self, query: str, symbol: str = None, data: dict = None):
-        """Generate expert financial advice using Gemini"""
+        """Generate expert financial advice using Gemini with enhanced capabilities"""
         
-        # Build context prompt
-        # Enhanced context with comprehensive analysis
+        # Detect query type for better handling
+        query_type = self.detect_query_type(query)
+        
+        # Handle general questions without stock context
+        if not symbol and query_type == "general":
+            return self.generate_general_response(query)
+        
+        # Handle stock-specific questions
         context = f"""
 Bạn là một chuyên gia tài chính hàng đầu với 20 năm kinh nghiệm đầu tư chứng khoán tại Việt Nam và quốc tế.
 Hãy phân tích sâu sắc và đưa ra lời khuyên chuyên nghiệp nhất.
@@ -228,5 +236,88 @@ Lưu ý: Trả lời bằng tiếng Việt, dựa trên dữ liệu thực tế,
             formatted.append(f"- Khuyến nghị: {inv.get('recommendation', 'N/A')}")
             formatted.append(f"- Lý do: {inv.get('reason', 'N/A')}")
             formatted.append(f"- Cổ tức: {inv.get('dividend_yield', 'N/A')}%")
+            formatted.append(f"- Giá mục tiêu: {inv.get('target_price', 'N/A')}")
         
         return "\n".join(formatted) if formatted else "Dữ liệu không đầy đủ để phân tích"
+    
+    def generate_general_response(self, query: str) -> dict:
+        """Generate response for general questions (non-stock specific)"""
+        try:
+            # Enhanced context for general financial questions
+            context = f"""
+Bạn là một chuyên gia tài chính và đầu tư hàng đầu tại Việt Nam với 20+ năm kinh nghiệm.
+Bạn có thể trả lời mọi câu hỏi về:
+- Thị trường chứng khoán Việt Nam và quốc tế
+- Phân tích kỹ thuật và cơ bản
+- Chiến lược đầu tư và quản lý rủi ro
+- Kinh tế vĩ mô và vi mô
+- Các sản phẩm tài chính (cổ phiếu, trái phiếu, quỹ, forex)
+- Lập kế hoạch tài chính cá nhân
+- Thuế và pháp lý đầu tư
+- Tâm lý học đầu tư
+- Fintech và công nghệ tài chính
+
+CÂU HỎI: {query}
+
+HÃY TRẢ LỜI:
+1. 📚 KIẾN THỨC CƠ BẢN: Giải thích khái niệm/vấn đề
+2. 🎯 PHÂN TÍCH THỰC TẾ: Áp dụng vào thị trường VN
+3. 💡 KHUYẾN NGHỊ: Lời khuyên cụ thể và thực tế
+4. ⚠️ LƯU Ý: Rủi ro và điều cần chú ý
+
+Trả lời bằng tiếng Việt, chuyên nghiệp nhưng dễ hiểu.
+"""
+            
+            response = self.model.generate_content(
+                context,
+                generation_config=genai.types.GenerationConfig(
+                    temperature=0.7,
+                    max_output_tokens=2048,
+                )
+            )
+            
+            if response.text:
+                return {
+                    "expert_advice": f"📈 **PHÂN TÍCH CHUYÊN GIA:**\n{response.text}\n\n⚠️ **LƯU Ý:** Đây là thông tin tham khảo, không phải lời khuyên đầu tư tuyệt đối.",
+                    "recommendations": [
+                        "Nghiên cứu thêm từ nhiều nguồn",
+                        "Tham khảo chuyên gia tài chính",
+                        "Đánh giá khả năng tài chính cá nhân",
+                        "Chỉ đầu tư số tiền có thể chấp nhận mất"
+                    ]
+                }
+            else:
+                return self._get_fallback_response(query)
+                
+        except Exception as e:
+            return self._get_fallback_response(query)
+    
+    def _get_fallback_response(self, query: str) -> dict:
+        """Fallback response when Gemini fails"""
+        return {
+            "expert_advice": f"📈 **VỀ CÂU HỎI: {query}**\n\nXin lỗi, tôi không thể xử lý câu hỏi này lúc này. Vui lòng thử lại sau hoặc đặt câu hỏi khác.\n\n⚠️ **GỢI Ý:**\n- Kiểm tra kết nối internet\n- Thử đặt câu hỏi ngắn gọn hơn\n- Liên hệ hỗ trợ nếu vấn đề tiếp tục",
+            "recommendations": [
+                "Thử đặt câu hỏi khác",
+                "Kiểm tra kết nối mạng",
+                "Liên hệ hỗ trợ kỹ thuật"
+            ]
+        }
+    
+    def detect_query_type(self, query: str) -> str:
+        """Detect if query is stock-specific or general"""
+        query_lower = query.lower()
+        
+        # Stock symbols patterns
+        stock_patterns = ['vcb', 'bid', 'ctg', 'vic', 'vhm', 'hpg', 'fpt', 'msn', 'mwg', 'gas', 'plx']
+        
+        # Check for stock symbols
+        for pattern in stock_patterns:
+            if pattern in query_lower:
+                return "stock_specific"
+        
+        # Check for stock-related keywords
+        stock_keywords = ['cổ phiếu', 'mã', 'ticker', 'stock', 'share']
+        if any(keyword in query_lower for keyword in stock_keywords):
+            return "stock_specific"
+        
+        return "general"

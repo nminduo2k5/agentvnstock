@@ -24,12 +24,6 @@ def init_agents():
 
 main_agent, vn_api = init_agents()
 
-# Add version info to show the enhanced integration
-st.sidebar.markdown("""<div style='text-align: center; font-size: 0.8em; color: #888;'>
-    <p>🔄 Enhanced Real Data Integration v2.1</p>
-    <p>StockInfo + PricePredictor</p>
-</div>""", unsafe_allow_html=True)
-
 # Analysis display functions
 async def display_comprehensive_analysis(result, symbol, time_horizon="Trung hạn", risk_tolerance=50):
     """Display comprehensive analysis with real stock info"""
@@ -125,11 +119,13 @@ def display_price_prediction(pred):
     # Extract multi-timeframe predictions if available
     if 'predictions' in pred:
         predictions = pred['predictions']
+        target_1d = predictions.get('short_term', {}).get('1_day', {}).get('price', current_price * 1.01)
         target_1w = predictions.get('short_term', {}).get('7_days', {}).get('price', current_price * 1.02)
         target_1m = predictions.get('medium_term', {}).get('30_days', {}).get('price', current_price * 1.05)
         target_3m = predictions.get('medium_term', {}).get('60_days', {}).get('price', current_price * 1.1)
     else:
         # Use predicted_price as fallback
+        target_1d = current_price * 1.01
         target_1w = current_price * 1.02
         target_1m = current_price * 1.05
         target_3m = predicted_price
@@ -143,15 +139,17 @@ def display_price_prediction(pred):
             <div style="font-size: 2.5em; margin-bottom: 10px;">{icons.get(trend, '📊')}</div>
             <h3 style="margin: 0; font-size: 24px;">DỰ ĐOÁN GIÁ</h3>
             <h2 style="margin: 10px 0; font-size: 28px;">{trend.upper()}</h2>
-            <p style="margin: 5px 0; font-size: 18px; opacity: 0.9;">Giá dự đoán: {predicted_price:,.2f} VND</p>
+            <p style="margin: 5px 0; font-size: 18px; opacity: 0.9;">Giá dự đoán 1 ngày: {target_1d:,.2f} VND</p>
+            <p style="margin: 5px 0; font-size: 18px; opacity: 0.9;">Giá dự đoán 1 tuần: {target_1w:,.2f} VND</p>
+            <p style="margin: 5px 0; font-size: 18px; opacity: 0.9;">Giá dự đoán 1 tháng: {target_1m:,.2f} VND</p>
+            <p style="margin: 5px 0; font-size: 18px; opacity: 0.9;">Giá dự đoán 3 tháng: {predicted_price:,.2f} VND</p>
             <p style="margin: 5px 0; font-size: 14px; opacity: 0.8;">Độ tin cậy: {confidence:.1f}%</p>
-            <p style="margin: 5px 0; font-size: 12px; opacity: 0.7;">Nguồn dữ liệu: {data_source}</p>
         </div>
     </div>
     """, unsafe_allow_html=True)
     
     # Detailed prediction metrics
-    col1, col2, col3 = st.columns(3)
+    col1, col2, col3, col4 = st.columns(4)
     with col1:
         st.metric("Mục tiêu 1 tuần", f"{target_1w:,.2f}")
         st.metric("Hỗ trợ", f"{support:,.2f}")
@@ -161,7 +159,9 @@ def display_price_prediction(pred):
     with col3:
         st.metric("Mục tiêu 3 tháng", f"{target_3m:,.2f}")
         st.metric("RSI", f"{rsi:.2f}")
-    
+    with col4:
+        st.metric("Mục tiêu 1 ngày", f"{target_1d:,.2f}")
+        st.metric("RSI", f"{rsi:.2f}")
     # Prediction chart with real data
     dates = [(datetime.now() + timedelta(days=i)).strftime('%d/%m') for i in range(1, 31)]
     
@@ -306,7 +306,7 @@ def display_investment_analysis(inv):
 st.markdown("""
 <div class="main-header">
     <h1>DUONG AI TRADING SIUUUU</h1>
-    <p><b>Hệ thống phân tích đầu tư chứng khoán với 6 AI Agents chuyên nghiệp + Gemini Chatbot</b></p>
+    <p><b>Hệ thống phân tích đầu tư chứng khoán với 7 AI Agents chuyên nghiệp + Gemini Chatbot</b></p>
 </div>
 """, unsafe_allow_html=True)
 
@@ -369,14 +369,15 @@ with st.sidebar:
     
     st.divider()
     
-    # 6 AI Agents Status
-    st.subheader("🤖 6 AI Agents")
+    # 7 AI Agents Status
+    st.subheader("🤖 7 AI Agents")
     agents_info = [
         {"name": "📈 PricePredictor", "desc": "Dự đoán giá", "status": "🟢"},
         {"name": "📰 TickerNews", "desc": "Tin tức cổ phiếu", "status": "🟢"},
         {"name": "🌍 MarketNews", "desc": "Tin tức thị trường", "status": "🟢"},
         {"name": "💼 InvestmentExpert", "desc": "Phân tích đầu tư", "status": "🟢"},
         {"name": "⚠️ RiskExpert", "desc": "Quản lý rủi ro", "status": "🟢"},
+        {"name": "🏢 EnhancedNewsAgent", "desc": "Thông tin công ty", "status": "🟢"},
         {"name": "🧠 GeminiAgent", "desc": "AI Chatbot", "status": gemini_status},
         {"name": "🤖 CrewAI", "desc": "Tin tức thật", "status": crewai_status}
     ]
@@ -479,7 +480,7 @@ tab1, tab2, tab3, tab4, tab6, tab7 = st.tabs([
     "💬 AI Chatbot", 
     "📈 Thị trường VN",
     "📰 Tin tức cổ phiếu",
-    "🤖 Tin tức nâng cao",
+    "🏢 Thông tin công ty",
     "🌏 Tin tức quốc tế"
 ])
 
@@ -635,6 +636,7 @@ with tab3:
             asyncio.set_event_loop(loop)
             market_data = loop.run_until_complete(vn_api.get_market_overview())
             
+            # Hiển thị các chỉ số chính
             if market_data.get('vn_index'):
                 st.subheader("📊 VN-Index")
                 vn_index = market_data['vn_index']
@@ -647,7 +649,31 @@ with tab3:
                 with col3:
                     st.metric("Khối lượng", f"{vn_index.get('volume', 0):,}")
             
-            # Top movers with beautiful cards
+            if market_data.get('vn30_index'):
+                st.subheader("📊 VN30-Index")
+                vn30_index = market_data['vn30_index']
+                col1, col2, col3 = st.columns(3)
+                
+                with col1:
+                    st.metric("VN30-Index", f"{vn30_index['value']:,.2f}", f"{vn30_index['change_percent']:+.2f}%")
+                with col2:
+                    st.metric("Thay đổi", f"{vn30_index['change']:+,.2f}")
+                with col3:
+                    st.metric("Khối lượng", f"{vn30_index.get('volume', 0):,}")
+            
+            if market_data.get('hn_index'):
+                st.subheader("📊 HN-Index")
+                hn_index = market_data['hn_index']
+                col1, col2, col3 = st.columns(3)
+                
+                with col1:
+                    st.metric("HN-Index", f"{hn_index['value']:,.2f}", f"{hn_index['change_percent']:+.2f}%")
+                with col2:
+                    st.metric("Thay đổi", f"{hn_index['change']:+,.2f}")
+                with col3:
+                    st.metric("Khối lượng", f"{hn_index.get('volume', 0):,}")
+            
+            # Top movers
             col1, col2 = st.columns(2)
             
             with col1:
@@ -683,6 +709,7 @@ with tab3:
                             <strong>{stock['symbol']}</strong>: {stock['change_percent']:.2f}%
                         </div>
                         """, unsafe_allow_html=True)
+        
     
     # Available VN stocks from CrewAI
     st.markdown("---")  # Separator
@@ -981,5 +1008,5 @@ with tab7:
 
 # Footer
 st.markdown("---")
-st.markdown("**🇻🇳 AI Trading Team Vietnam** - Powered by CrewAI, Google Gemini & 6 AI Agents")
+st.markdown("**🇻🇳 AI Trading Team Vietnam** - Powered by CrewAI, Google Gemini & 7 AI Agents")
 st.markdown("*Real-time data từ CrewAI thay vì vnstock*")
