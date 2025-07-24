@@ -16,14 +16,14 @@ logger = logging.getLogger(__name__)
 
 class MainAgent:
     def __init__(self, vn_api: VNStockAPI, gemini_api_key: str = None, serper_api_key: str = None):
-        self.price_predictor = PricePredictor()
+        self.vn_api = vn_api
+        self.stock_info = StockInfoDisplay(vn_api)
+        self.price_predictor = PricePredictor(vn_api, self.stock_info)
         self.ticker_news = TickerNews()
         self.market_news = MarketNews()
         self.investment_expert = InvestmentExpert()
         self.risk_expert = RiskExpert()
-        self.stock_info = StockInfoDisplay(vn_api)
         self.international_news = InternationalMarketNews()
-        self.vn_api = vn_api
         
         # Initialize Gemini with API key if provided
         self.gemini_agent = None

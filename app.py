@@ -24,6 +24,12 @@ def init_agents():
 
 main_agent, vn_api = init_agents()
 
+# Add version info to show the enhanced integration
+st.sidebar.markdown("""<div style='text-align: center; font-size: 0.8em; color: #888;'>
+    <p>🔄 Enhanced Real Data Integration v2.1</p>
+    <p>StockInfo + PricePredictor</p>
+</div>""", unsafe_allow_html=True)
+
 # Analysis display functions
 async def display_comprehensive_analysis(result, symbol, time_horizon="Trung hạn", risk_tolerance=50):
     """Display comprehensive analysis with real stock info"""
@@ -84,27 +90,49 @@ def display_price_prediction(pred):
         st.error(f"❌ {pred['error']}")
         return
     
-    import random
     import pandas as pd
     import numpy as np
     from datetime import datetime, timedelta
     
-    # Generate detailed prediction data
-    current_price = random.randint(20000, 150000)
-    trend = random.choice(['bullish', 'bearish', 'neutral'])
+    # Use real prediction data from enhanced price_predictor
+    current_price = pred.get('current_price', 0)
+    predicted_price = pred.get('predicted_price', 0)
+    trend = pred.get('trend', 'neutral')
+    confidence = pred.get('confidence', 50)
+    data_source = pred.get('data_source', 'Unknown')
     
-    prediction_data = {
-        'trend': trend,
-        'predicted_price': current_price * random.uniform(0.95, 1.15),
-        'confidence': round(random.uniform(65, 85), 1),
-        'target_1w': current_price * random.uniform(0.98, 1.08),
-        'target_1m': current_price * random.uniform(0.92, 1.18),
-        'target_3m': current_price * random.uniform(0.85, 1.25),
-        'support': current_price * random.uniform(0.85, 0.95),
-        'resistance': current_price * random.uniform(1.05, 1.15),
-        'rsi': round(random.uniform(30, 70), 1),
-        'macd': round(random.uniform(-5, 5), 2)
-    }
+    # Calculate change percentage
+    change_percent = pred.get('change_percent', 0)
+    
+    # Extract additional data if available or use reasonable estimates
+    if 'technical_indicators' in pred:
+        tech_indicators = pred['technical_indicators']
+        rsi = tech_indicators.get('rsi', 50)
+        macd = tech_indicators.get('macd', 0)
+    else:
+        rsi = 50
+        macd = 0
+    
+    # Extract support/resistance if available
+    if 'trend_analysis' in pred:
+        trend_analysis = pred['trend_analysis']
+        support = trend_analysis.get('support_level', current_price * 0.9)
+        resistance = trend_analysis.get('resistance_level', current_price * 1.1)
+    else:
+        support = current_price * 0.9
+        resistance = current_price * 1.1
+    
+    # Extract multi-timeframe predictions if available
+    if 'predictions' in pred:
+        predictions = pred['predictions']
+        target_1w = predictions.get('short_term', {}).get('7_days', {}).get('price', current_price * 1.02)
+        target_1m = predictions.get('medium_term', {}).get('30_days', {}).get('price', current_price * 1.05)
+        target_3m = predictions.get('medium_term', {}).get('60_days', {}).get('price', current_price * 1.1)
+    else:
+        # Use predicted_price as fallback
+        target_1w = current_price * 1.02
+        target_1m = current_price * 1.05
+        target_3m = predicted_price
     
     colors = {'bullish': '#28a745', 'bearish': '#dc3545', 'neutral': '#ffc107'}
     icons = {'bullish': '📈', 'bearish': '📉', 'neutral': '📊'}
@@ -115,8 +143,9 @@ def display_price_prediction(pred):
             <div style="font-size: 2.5em; margin-bottom: 10px;">{icons.get(trend, '📊')}</div>
             <h3 style="margin: 0; font-size: 24px;">DỰ ĐOÁN GIÁ</h3>
             <h2 style="margin: 10px 0; font-size: 28px;">{trend.upper()}</h2>
-            <p style="margin: 5px 0; font-size: 18px; opacity: 0.9;">Giá dự đoán: {prediction_data['predicted_price']:,.2f} VND</p>
-            <p style="margin: 5px 0; font-size: 14px; opacity: 0.8;">Độ tin cậy: {prediction_data['confidence']:.1f}%</p>
+            <p style="margin: 5px 0; font-size: 18px; opacity: 0.9;">Giá dự đoán: {predicted_price:,.2f} VND</p>
+            <p style="margin: 5px 0; font-size: 14px; opacity: 0.8;">Độ tin cậy: {confidence:.1f}%</p>
+            <p style="margin: 5px 0; font-size: 12px; opacity: 0.7;">Nguồn dữ liệu: {data_source}</p>
         </div>
     </div>
     """, unsafe_allow_html=True)
@@ -124,29 +153,40 @@ def display_price_prediction(pred):
     # Detailed prediction metrics
     col1, col2, col3 = st.columns(3)
     with col1:
-        st.metric("Mục tiêu 1 tuần", f"{prediction_data['target_1w']:,.2f}")
-        st.metric("Hỗ trợ", f"{prediction_data['support']:,.2f}")
+        st.metric("Mục tiêu 1 tuần", f"{target_1w:,.2f}")
+        st.metric("Hỗ trợ", f"{support:,.2f}")
     with col2:
-        st.metric("Mục tiêu 1 tháng", f"{prediction_data['target_1m']:,.2f}")
-        st.metric("Kháng cự", f"{prediction_data['resistance']:,.2f}")
+        st.metric("Mục tiêu 1 tháng", f"{target_1m:,.2f}")
+        st.metric("Kháng cự", f"{resistance:,.2f}")
     with col3:
-        st.metric("Mục tiêu 3 tháng", f"{prediction_data['target_3m']:,.2f}")
-        st.metric("RSI", f"{prediction_data['rsi']:.2f}")
+        st.metric("Mục tiêu 3 tháng", f"{target_3m:,.2f}")
+        st.metric("RSI", f"{rsi:.2f}")
     
-    # Prediction chart
+    # Prediction chart with real data
     dates = [(datetime.now() + timedelta(days=i)).strftime('%d/%m') for i in range(1, 31)]
-    base = current_price
-    future_prices = [base]
+    
+    # Generate more realistic future prices based on trend
+    future_prices = [current_price]
+    
+    # Calculate daily growth rate to reach predicted price in 30 days
+    daily_growth = (predicted_price / current_price) ** (1/30) - 1
+    
+    # Add some randomness but maintain the overall trend
+    import random
     for i in range(29):
-        if trend == 'bullish':
-            future_prices.append(future_prices[-1] * (1 + random.uniform(0, 0.02)))
-        elif trend == 'bearish':
-            future_prices.append(future_prices[-1] * (1 + random.uniform(-0.02, 0)))
-        else:
-            future_prices.append(future_prices[-1] * (1 + random.uniform(-0.01, 0.01)))
+        # Base growth plus some randomness
+        random_factor = random.uniform(-0.005, 0.005)  # Small random factor
+        day_growth = daily_growth + random_factor
+        future_prices.append(future_prices[-1] * (1 + day_growth))
     
     pred_df = pd.DataFrame({'Ngày': dates, 'Dự đoán': future_prices})
     st.line_chart(pred_df.set_index('Ngày'))
+    
+    # Show data source
+    if 'StockInfo_Real' in data_source:
+        st.success("✅ Dự đoán sử dụng dữ liệu thật từ StockInfo")
+    elif 'VCI_Real' in data_source:
+        st.info("ℹ️ Dự đoán sử dụng dữ liệu thật từ VNStock API")
 
 def display_risk_assessment(risk):
     if risk.get('error'):

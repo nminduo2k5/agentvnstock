@@ -233,73 +233,198 @@ class StockInfoDisplay:
         with col4:
             st.metric("P/B", f"{detailed_data['pb']:.3f}")
     
-    def display_price_chart(self, price_history: list, symbol: str):
-        """Hiển thị biểu đồ giá từ real data"""
-        st.subheader("📉 Biểu đồ giá 30 ngày")
+    def _generate_cafef_url(self, symbol: str) -> str:
+        """Generate CafeF URL thông minh với nhiều chiến lược"""
+        symbol_lower = symbol.lower()
         
-        if price_history and len(price_history) > 1:
-            # Sử dụng real data
-            df = pd.DataFrame(price_history)
-            df['date'] = pd.to_datetime(df['date'], format='%d/%m', errors='coerce')
-            df = df.dropna()
+        # 1. Thử lấy company name từ VNStock API nếu có
+        try:
+            company_name_from_api = self._get_company_name_from_api(symbol)
+            if company_name_from_api:
+                return f"https://cafef.vn/du-lieu/hose/{symbol_lower}-{company_name_from_api}.chn"
+        except:
+            pass
+        
+        # 2. Mapping cho các mã phổ biến (chỉ giữ lại top stocks)
+        company_mapping = {
+            'msn': 'cong-ty-co-phan-tap-doan-masan',
+            'vcb': 'ngan-hang-tmcp-ngoai-thuong-viet-nam',
+            'bid': 'ngan-hang-tmcp-dau-tu-va-phat-trien-viet-nam',
+            'ctg': 'ngan-hang-tmcp-cong-thuong-viet-nam',
+            'vib': 'ngan-hang-tmcp-quoc-te-viet-nam',
+            'tpb': 'ngan-hang-tmcp-tien-phong',
+            'stb': 'ngan-hang-tmcp-sai-gon-thuong-tin',
+            'acb': 'ngan-hang-tmcp-a-chau',
+            'tcb': 'ngan-hang-tmcp-ky-thuong-viet-nam',
+            'vpb': 'ngan-hang-tmcp-viet-nam-thinh-vuong',
+            'mbb': 'ngan-hang-tmcp-quan-doi',
+            'hdb': 'ngan-hang-tmcp-phat-trien-tp-hcm',
+            'vhm': 'cong-ty-co-phan-vinhomes',
+            'vic': 'tap-doan-vingroup-cong-ty-co-phan',
+            'hpg': 'cong-ty-co-phan-tap-doan-hoa-phat',
+            'gas': 'tong-cong-ty-khi-viet-nam-ctcp',
+            'plx': 'tap-doan-xang-dau-viet-nam',
+            'pnj': 'cong-ty-co-phan-vang-bac-da-quy-phu-nhuan',
+            'fpt': 'cong-ty-co-phan-fpt',
+            'mwg': 'cong-ty-co-phan-dau-tu-the-gioi-di-dong',
+            'nvl': 'cong-ty-co-phan-no-va-lam',
+            'vnm': 'cong-ty-co-phan-sua-viet-nam',
+            'ssi': 'cong-ty-co-phan-chung-khoan-sai-gon',
+            'vci': 'cong-ty-co-phan-chung-khoan-viet-capital',
+            'ctd': 'cong-ty-co-phan-xay-dung-coteccons',
+        }
+        
+        # 3. Nếu có mapping chính xác, dùng format đầy đủ
+        if symbol_lower in company_mapping:
+            company_name = company_mapping[symbol_lower]
+            return f"https://cafef.vn/du-lieu/hose/{symbol_lower}-{company_name}.chn"
+        
+        # 4. Thử generate tên công ty thông minh
+        generated_name = self._generate_company_name(symbol_lower)
+        if generated_name:
+            return f"https://cafef.vn/du-lieu/hose/{symbol_lower}-{generated_name}.chn"
+        
+        # 5. Fallback với multiple URLs để tăng khả năng thành công
+        return self._get_best_fallback_url(symbol_lower)
+    
+    def _get_company_name_from_api(self, symbol: str) -> str:
+        """Thử lấy tên công ty từ VNStock API"""
+        try:
+            from vnstock import Vnstock
+            stock_obj = Vnstock().stock(symbol=symbol, source='VCI')
+            # Thử lấy company info
+            info = stock_obj.company.profile()
+            if not info.empty and 'companyName' in info.columns:
+                company_name = info['companyName'].iloc[0]
+                # Convert to URL-friendly format
+                return self._convert_to_url_format(company_name)
+        except:
+            pass
+        return None
+    
+    def _generate_company_name(self, symbol: str) -> str:
+        """Generate tên công ty thông minh dựa trên pattern"""
+        # Pattern recognition cho các loại công ty
+        patterns = {
+            # Ngân hàng
+            'bank_patterns': ['cb', 'tb', 'ab', 'bb', 'ib', 'pb'],
+            'bank_prefix': 'ngan-hang-tmcp',
             
-            if not df.empty:
-                chart_df = df[['date', 'close']].rename(columns={'close': 'Giá'})
-                chart_df['date'] = chart_df['date'].dt.strftime('%d/%m')
-                st.line_chart(chart_df.set_index('date'))
-                
-                # Thống kê chart
-                col1, col2, col3 = st.columns(3)
-                with col1:
-                    st.metric("Giá cao nhất", f"{df['close'].max():,.2f}")
-                with col2:
-                    st.metric("Giá thấp nhất", f"{df['close'].min():,.2f}")
-                with col3:
-                    st.metric("Biến động", f"{((df['close'].max() - df['close'].min()) / df['close'].min() * 100):+.2f}%")
-            else:
-                self._display_mock_chart(symbol)
+            # Công ty cổ phần
+            'corp_prefix': 'cong-ty-co-phan',
+            
+            # Tập đoàn
+            'group_indicators': ['vn', 'vt', 'vc', 'vh'],
+            'group_prefix': 'tap-doan',
+        }
+        
+        # Detect bank
+        if any(symbol.endswith(pattern) for pattern in patterns['bank_patterns']):
+            return f"{patterns['bank_prefix']}-{symbol.replace('cb', '').replace('tb', '').replace('ab', '').replace('bb', '').replace('ib', '').replace('pb', '')}"
+        
+        # Detect group
+        if any(symbol.startswith(indicator) for indicator in patterns['group_indicators']):
+            return f"{patterns['group_prefix']}-{symbol}"
+        
+        # Default corporate
+        return f"{patterns['corp_prefix']}-{symbol}"
+    
+    def _convert_to_url_format(self, company_name: str) -> str:
+        """Convert tên công ty thành format URL"""
+        import re
+        # Remove special characters and convert to lowercase
+        name = re.sub(r'[^\w\s-]', '', company_name.lower())
+        # Replace spaces with hyphens
+        name = re.sub(r'\s+', '-', name)
+        # Remove Vietnamese accents (simplified)
+        replacements = {
+            'á': 'a', 'à': 'a', 'ả': 'a', 'ã': 'a', 'ạ': 'a',
+            'ă': 'a', 'ắ': 'a', 'ằ': 'a', 'ẳ': 'a', 'ẵ': 'a', 'ặ': 'a',
+            'â': 'a', 'ấ': 'a', 'ầ': 'a', 'ẩ': 'a', 'ẫ': 'a', 'ậ': 'a',
+            'é': 'e', 'è': 'e', 'ẻ': 'e', 'ẽ': 'e', 'ẹ': 'e',
+            'ê': 'e', 'ế': 'e', 'ề': 'e', 'ể': 'e', 'ễ': 'e', 'ệ': 'e',
+            'í': 'i', 'ì': 'i', 'ỉ': 'i', 'ĩ': 'i', 'ị': 'i',
+            'ó': 'o', 'ò': 'o', 'ỏ': 'o', 'õ': 'o', 'ọ': 'o',
+            'ô': 'o', 'ố': 'o', 'ồ': 'o', 'ổ': 'o', 'ỗ': 'o', 'ộ': 'o',
+            'ơ': 'o', 'ớ': 'o', 'ờ': 'o', 'ở': 'o', 'ỡ': 'o', 'ợ': 'o',
+            'ú': 'u', 'ù': 'u', 'ủ': 'u', 'ũ': 'u', 'ụ': 'u',
+            'ư': 'u', 'ứ': 'u', 'ừ': 'u', 'ử': 'u', 'ữ': 'u', 'ự': 'u',
+            'ý': 'y', 'ỳ': 'y', 'ỷ': 'y', 'ỹ': 'y', 'ỵ': 'y',
+            'đ': 'd'
+        }
+        for vn_char, en_char in replacements.items():
+            name = name.replace(vn_char, en_char)
+        return name
+    
+    def _get_best_fallback_url(self, symbol: str) -> str:
+        """Trả về URL fallback tốt nhất với logic thông minh"""
+        # Determine exchange based on symbol patterns
+        if len(symbol) == 3 and symbol.isupper():
+            # Likely HOSE
+            primary_url = f"https://cafef.vn/du-lieu/hose/{symbol}.chn"
+        elif 'b' in symbol.lower() or len(symbol) > 3:
+            # Likely HNX or UPCOM
+            primary_url = f"https://cafef.vn/du-lieu/hnx/{symbol}.chn"
         else:
-            self._display_mock_chart(symbol)
-    
-    def _display_mock_chart(self, symbol: str):
-        """Hiển thị biểu đồ mock khi không có real data"""
-        np.random.seed(hash(symbol) % 1000)
-        dates = [(datetime.now() - timedelta(days=i)).strftime('%d/%m') for i in range(30, 0, -1)]
-        base_price = 50000
-        prices = [base_price]
+            primary_url = f"https://cafef.vn/du-lieu/hose/{symbol}.chn"
         
-        for _ in range(29):
-            prices.append(prices[-1] * (1 + np.random.normal(0, 0.015)))
+        return primary_url
+
+    def display_price_chart(self, price_history: list, symbol: str):
+        """Hiển thị biểu đồ kỹ thuật và lịch sử giao dịch từ CafeF"""
+        st.subheader("📉 Biểu đồ kỹ thuật và lịch sử giao dịch")
         
-        chart_df = pd.DataFrame({'Ngày': dates, 'Giá': prices})
-        st.line_chart(chart_df.set_index('Ngày'))
-        st.info("📊 Biểu đồ demo - Cần real data từ VNStock")
+       # Tạo URL CafeF cho iframe
+        cafef_url = self._generate_cafef_url(symbol)
+        
+        # Thêm link mở trong tab mới
+        st.markdown(f"""
+        <div style="text-align: center; margin: 20px 0;">
+            <a href="{cafef_url}" target="_blank" style="
+                background: linear-gradient(135deg, #FF6B6B, #4ECDC4);
+                color: white;
+                padding: 12px 24px;
+                text-decoration: none;
+                border-radius: 25px;
+                font-weight: bold;
+                display: inline-block;
+                transition: transform 0.2s;
+                font-size: 14px;
+            ">
+                � Xem biểu đồ kỹ thuật tại CafeF
+            </a>
+        </div>
+        """, unsafe_allow_html=True)
+        
     
-    def display_volume_analysis(self, price_history: list):
-        """Hiển thị phân tích khối lượng"""
-        if price_history and len(price_history) > 1:
-            st.subheader("📊 Phân tích khối lượng")
-            
-            df = pd.DataFrame(price_history)
-            if 'volume' in df.columns:
-                # Volume chart
-                volume_df = df[['date', 'volume']].copy()
-                volume_df['date'] = pd.to_datetime(volume_df['date'], format='%d/%m', errors='coerce')
-                volume_df = volume_df.dropna()
-                
-                if not volume_df.empty:
-                    volume_df['date'] = volume_df['date'].dt.strftime('%d/%m')
-                    st.bar_chart(volume_df.set_index('date'))
-                    
-                    # Volume statistics
-                    avg_volume = df['volume'].mean()
-                    max_volume = df['volume'].max()
-                    
-                    col1, col2 = st.columns(2)
-                    with col1:
-                        st.metric("KLGD TB", f"{avg_volume:,}")
-                    with col2:
-                        st.metric("KLGD cao nhất", f"{max_volume:,}")
+    def display_volume_analysis(self, symbol: str):
+        """Hiển thị link phân tích khối lượng tại CafeF"""
+        st.subheader("📊 Phân tích khối lượng và kỹ thuật")
+        
+        # Tạo URL CafeF cho phân tích khối lượng
+        cafef_url = self._generate_cafef_url(symbol)
+        st.markdown(f"""
+        <div style="text-align: center; margin: 20px 0;">
+            <p style="font-size: 16px; color: #666; margin-bottom: 15px;">
+                Xem phân tích khối lượng chi tiết, biểu đồ kỹ thuật và các chỉ báo chuyên nghiệp tại CafeF
+            </p>
+            <a href="{cafef_url}" target="_blank" style="
+                background: linear-gradient(135deg, #4CAF50, #45a049);
+                color: white;
+                padding: 15px 30px;
+                text-decoration: none;
+                border-radius: 25px;
+                font-weight: bold;
+                display: inline-block;
+                transition: transform 0.2s;
+        
+                font-size: 16px;
+                box-shadow: 0 4px 8px rgba(0,0,0,0.2);
+            ">
+                📊 Xem phân tích khối lượng tại CafeF
+            </a>
+        </div>
+        """, unsafe_allow_html=True)
 
 async def display_comprehensive_stock_info(vn_api, symbol: str):
     """Hàm chính để hiển thị thông tin cổ phiếu toàn diện"""
@@ -332,7 +457,7 @@ async def display_comprehensive_stock_info(vn_api, symbol: str):
     display.display_price_chart(price_history, symbol)
     
     # Phân tích khối lượng
-    display.display_volume_analysis(price_history)
+    display.display_volume_analysis(symbol)
     
     # Enhanced data source indicator
     if hasattr(stock_data, 'price') and stock_data.price > 10000:
