@@ -25,7 +25,29 @@ class PricePredictor:
             stock_info: Optional StockInfoDisplay instance
         """
         try:
-            # Import VN API to check if VN stock if not provided
+            # Use provided VN API or initialize new one
+            if not vn_api:
+                if not self.vn_api:
+                    import sys
+                    import os
+                    sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+                    from src.data.vn_stock_api import VNStockAPI
+                    self.vn_api = VNStockAPI()
+                vn_api = self.vn_api
+            
+            # Check if VN stock using real API
+            if vn_api and vn_api.is_vn_stock(symbol):
+                return self._predict_vn_stock(symbol, vn_api)
+            else:
+                return self._predict_international_stock(symbol)
+                
+        except Exception as e:
+            return {"error": str(e)}
+    
+    def _predict_vn_stock(self, symbol: str, vn_api=None):
+        """Dự đoán cổ phiếu Việt Nam với thuật toán nâng cao sử dụng real data từ stock_info"""
+        try:
+            # Use provided VN API or initialize
             if not vn_api:
                 import sys
                 import os
@@ -33,27 +55,11 @@ class PricePredictor:
                 from src.data.vn_stock_api import VNStockAPI
                 vn_api = VNStockAPI()
             
-            if vn_api.is_vn_stock(symbol):
-                return self._predict_vn_stock(symbol)
-            else:
-                return self._predict_international_stock(symbol)
-                
-        except Exception as e:
-            return {"error": str(e)}
-    
-    def _predict_vn_stock(self, symbol: str):
-        """Dự đoán cổ phiếu Việt Nam với thuật toán nâng cao sử dụng real data từ stock_info"""
-        try:
             # Import StockInfoDisplay để lấy real data
-            import sys
-            import os
             import asyncio
-            sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-            from src.data.vn_stock_api import VNStockAPI
             from agents.stock_info import StockInfoDisplay
             
-            # Khởi tạo VNStockAPI và StockInfoDisplay
-            vn_api = VNStockAPI()
+            # Khởi tạo StockInfoDisplay với VN API
             stock_info = StockInfoDisplay(vn_api)
             
             # Lấy dữ liệu chi tiết từ stock_info
@@ -674,7 +680,3 @@ class PricePredictor:
             return "Bearish"
         else:
             return "Neutral"
-
-
-
-    

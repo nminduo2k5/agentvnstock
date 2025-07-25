@@ -21,8 +21,8 @@ class MainAgent:
         self.price_predictor = PricePredictor(vn_api, self.stock_info)
         self.ticker_news = TickerNews()
         self.market_news = MarketNews()
-        self.investment_expert = InvestmentExpert()
-        self.risk_expert = RiskExpert()
+        self.investment_expert = InvestmentExpert(vn_api)
+        self.risk_expert = RiskExpert(vn_api)
         self.international_news = InternationalMarketNews()
         
         # Initialize Gemini with API key if provided

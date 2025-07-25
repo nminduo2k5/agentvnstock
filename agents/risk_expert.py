@@ -1,21 +1,36 @@
 import yfinance as yf
 import numpy as np
+import sys
+import os
+
+# Add project root to path
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 class RiskExpert:
-    def __init__(self):
+    def __init__(self, vn_api=None):
         self.name = "Risk Expert Agent"
+        # Use provided VN API or lazy initialization
+        self._vn_api = vn_api
+    
+    def _get_vn_api(self):
+        """Get VN API instance (provided or lazy initialization)"""
+        if self._vn_api is None:
+            try:
+                from src.data.vn_stock_api import VNStockAPI
+                self._vn_api = VNStockAPI()
+                print("⚠️ RiskExpert: Using fallback VN API initialization")
+            except Exception as e:
+                print(f"⚠️ Failed to initialize VN API: {e}")
+                self._vn_api = None
+        return self._vn_api
     
     def assess_risk(self, symbol: str):
         try:
-            # Import VN API to check if VN stock
-            import sys
-            import os
-            sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-            from src.data.vn_stock_api import VNStockAPI
+            # Get VN API instance
+            vn_api = self._get_vn_api()
             
-            vn_api = VNStockAPI()
-            
-            if vn_api.is_vn_stock(symbol):
+            # Check if VN stock using real API
+            if vn_api and vn_api.is_vn_stock(symbol):
                 # Try real VN data first
                 try:
                     from vnstock import Vnstock

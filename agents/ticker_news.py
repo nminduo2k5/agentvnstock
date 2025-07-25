@@ -3,101 +3,78 @@ import requests
 import asyncio
 import aiohttp
 import logging
+import sys
+import os
 from bs4 import BeautifulSoup
 from datetime import datetime, timedelta
 from typing import Dict, List, Any, Optional
+
+# Add project root to path
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 logger = logging.getLogger(__name__)
 
 class TickerNews:
     def __init__(self):
         self.name = "Enhanced Ticker News Agent"
-        self.vn_stocks = self._get_comprehensive_vn_stocks()
+        # Initialize VN API for real data access
+        self._vn_api = None
+        self._vn_stocks_cache = None
     
-    def _get_comprehensive_vn_stocks(self) -> Dict[str, Dict[str, str]]:
-        """Comprehensive VN stocks list similar to CrewAI collector"""
+    def _get_vn_api(self):
+        """Lazy initialization of VN API"""
+        if self._vn_api is None:
+            try:
+                from src.data.vn_stock_api import VNStockAPI
+                self._vn_api = VNStockAPI()
+            except Exception as e:
+                print(f"⚠️ Failed to initialize VN API: {e}")
+                self._vn_api = None
+        return self._vn_api
+    
+    async def _get_vn_stocks(self) -> Dict[str, Dict[str, str]]:
+        """Get VN stocks from real API data"""
+        if self._vn_stocks_cache is not None:
+            return self._vn_stocks_cache
+        
+        try:
+            vn_api = self._get_vn_api()
+            if vn_api:
+                # Get available symbols from VN API (includes CrewAI data if available)
+                symbols_list = await vn_api.get_available_symbols()
+                
+                # Convert to dictionary format
+                vn_stocks = {}
+                for stock in symbols_list:
+                    vn_stocks[stock['symbol']] = {
+                        'name': stock['name'],
+                        'sector': stock['sector']
+                    }
+                
+                self._vn_stocks_cache = vn_stocks
+                logger.info(f"✅ Loaded {len(vn_stocks)} VN stocks from API")
+                return vn_stocks
+            else:
+                # Fallback to minimal static list
+                logger.warning("⚠️ VN API not available, using minimal fallback")
+                return self._get_fallback_vn_stocks()
+                
+        except Exception as e:
+            logger.error(f"❌ Error loading VN stocks: {e}")
+            return self._get_fallback_vn_stocks()
+    
+    def _get_fallback_vn_stocks(self) -> Dict[str, Dict[str, str]]:
+        """Minimal fallback VN stocks list"""
         return {
-            # Banking - 15 stocks
             'VCB': {'name': 'Ngân hàng TMCP Ngoại thương Việt Nam', 'sector': 'Banking'},
             'BID': {'name': 'Ngân hàng TMCP Đầu tư và Phát triển VN', 'sector': 'Banking'},
             'CTG': {'name': 'Ngân hàng TMCP Công thương Việt Nam', 'sector': 'Banking'},
-            'TCB': {'name': 'Ngân hàng TMCP Kỹ thương Việt Nam', 'sector': 'Banking'},
-            'ACB': {'name': 'Ngân hàng TMCP Á Châu', 'sector': 'Banking'},
-            'MBB': {'name': 'Ngân hàng TMCP Quân đội', 'sector': 'Banking'},
-            'VPB': {'name': 'Ngân hàng TMCP Việt Nam Thịnh Vượng', 'sector': 'Banking'},
-            'STB': {'name': 'Ngân hàng TMCP Sài Gòn Thương Tín', 'sector': 'Banking'},
-            'TPB': {'name': 'Ngân hàng TMCP Tiên Phong', 'sector': 'Banking'},
-            'EIB': {'name': 'Ngân hàng TMCP Xuất Nhập khẩu Việt Nam', 'sector': 'Banking'},
-            'SHB': {'name': 'Ngân hàng TMCP Sài Gòn - Hà Nội', 'sector': 'Banking'},
-            'VIB': {'name': 'Ngân hàng TMCP Quốc tế Việt Nam', 'sector': 'Banking'},
-            'MSB': {'name': 'Ngân hàng TMCP Hàng Hải', 'sector': 'Banking'},
-            'OCB': {'name': 'Ngân hàng TMCP Phương Đông', 'sector': 'Banking'},
-            'LPB': {'name': 'Ngân hàng TMCP Bưu Điện Liên Việt', 'sector': 'Banking'},
-            
-            # Real Estate - 12 stocks
             'VIC': {'name': 'Tập đoàn Vingroup', 'sector': 'Real Estate'},
             'VHM': {'name': 'Công ty CP Vinhomes', 'sector': 'Real Estate'},
-            'VRE': {'name': 'Công ty CP Vincom Retail', 'sector': 'Real Estate'},
-            'DXG': {'name': 'Tập đoàn Đất Xanh', 'sector': 'Real Estate'},
-            'NVL': {'name': 'Công ty CP Tập đoàn Đầu tư Địa ốc No Va', 'sector': 'Real Estate'},
-            'KDH': {'name': 'Công ty CP Đầu tư và Kinh doanh Nhà Khang Điền', 'sector': 'Real Estate'},
-            'PDR': {'name': 'Công ty CP Phát triển Bất động sản Phát Đạt', 'sector': 'Real Estate'},
-            'DIG': {'name': 'Tập đoàn Đầu tư Địa ốc DIC', 'sector': 'Real Estate'},
-            'CEO': {'name': 'Công ty CP Tập đoàn C.E.O', 'sector': 'Real Estate'},
-            'HDG': {'name': 'Tập đoàn Hà Đô', 'sector': 'Real Estate'},
-            'IJC': {'name': 'Công ty CP Đầu tư và Phát triển Đô thị IDJ', 'sector': 'Real Estate'},
-            'SCR': {'name': 'Công ty CP Địa ốc Sài Gòn Thương Tín', 'sector': 'Real Estate'},
-            
-            # Consumer & Retail - 10 stocks
             'MSN': {'name': 'Tập đoàn Masan', 'sector': 'Consumer'},
-            'MWG': {'name': 'Công ty CP Đầu tư Thế Giới Di Động', 'sector': 'Consumer'},
-            'VNM': {'name': 'Công ty CP Sữa Việt Nam', 'sector': 'Consumer'},
-            'SAB': {'name': 'Tổng Công ty CP Bia - Rượu - NGK Sài Gòn', 'sector': 'Consumer'},
-            'PNJ': {'name': 'Công ty CP Vàng bạc Đá quý Phú Nhuận', 'sector': 'Consumer'},
-            'FRT': {'name': 'Công ty CP Bán lẻ Kỹ thuật số FPT', 'sector': 'Consumer'},
-            'VGC': {'name': 'Công ty CP Xuất nhập khẩu Vetco', 'sector': 'Consumer'},
-            'MCH': {'name': 'Công ty CP Hàng tiêu dùng Masan', 'sector': 'Consumer'},
-            'KDC': {'name': 'Công ty CP Kinh Đô', 'sector': 'Consumer'},
-            'BBC': {'name': 'Công ty CP BIBICA', 'sector': 'Consumer'},
-            
-            # Industrial & Materials - 8 stocks
             'HPG': {'name': 'Tập đoàn Hòa Phát', 'sector': 'Industrial'},
-            'HSG': {'name': 'Tập đoàn Hoa Sen', 'sector': 'Industrial'},
-            'NKG': {'name': 'Công ty CP Thép Nam Kim', 'sector': 'Industrial'},
-            'SMC': {'name': 'Công ty CP Đầu tư Thương mại SMC', 'sector': 'Industrial'},
-            'TLG': {'name': 'Tập đoàn Thiên Long', 'sector': 'Industrial'},
-            'DPM': {'name': 'Công ty CP Phân bón Dầu khí Cà Mau', 'sector': 'Industrial'},
-            'DCM': {'name': 'Công ty CP Phân bón Dầu khí Cà Mau', 'sector': 'Industrial'},
-            'BMP': {'name': 'Công ty CP Nhựa Bình Minh', 'sector': 'Industrial'},
-            
-            # Technology - 6 stocks
             'FPT': {'name': 'Công ty CP FPT', 'sector': 'Technology'},
-            'CMG': {'name': 'Công ty CP Tin học CMC', 'sector': 'Technology'},
-            'ELC': {'name': 'Công ty CP Điện tử Elcom', 'sector': 'Technology'},
-            'ITD': {'name': 'Công ty CP Công nghệ Tiên Tiến ITD', 'sector': 'Technology'},
-            'SAM': {'name': 'Công ty CP Saigon Autotech', 'sector': 'Technology'},
-            'VGI': {'name': 'Công ty CP Đầu tư VGI', 'sector': 'Technology'},
-            
-            # Utilities & Energy - 6 stocks
-            'GAS': {'name': 'Tổng Công ty Khí Việt Nam', 'sector': 'Utilities'},
-            'PLX': {'name': 'Tập đoàn Xăng dầu Việt Nam', 'sector': 'Utilities'},
-            'POW': {'name': 'Tổng Công ty Điện lực Dầu khí Việt Nam', 'sector': 'Utilities'},
-            'NT2': {'name': 'Công ty CP Điện lực Dầu khí Nhơn Trạch 2', 'sector': 'Utilities'},
-            'PGD': {'name': 'Tổng Công ty Phân phối Khí thấp áp', 'sector': 'Utilities'},
-            'BSR': {'name': 'Công ty CP Lọc hóa dầu Bình Sơn', 'sector': 'Utilities'},
-            
-            # Transportation - 5 stocks
-            'VJC': {'name': 'Công ty CP Hàng không VietJet', 'sector': 'Transportation'},
-            'HVN': {'name': 'Tổng Công ty Hàng không Việt Nam', 'sector': 'Transportation'},
-            'GMD': {'name': 'Công ty CP Cảng Gemadept', 'sector': 'Transportation'},
-            'VSC': {'name': 'Công ty CP Container Việt Nam', 'sector': 'Transportation'},
-            'VOS': {'name': 'Công ty CP Vận tải Biển Việt Nam', 'sector': 'Transportation'},
-            
-            # Healthcare & Pharma - 4 stocks
-            'DHG': {'name': 'Công ty CP Dược Hậu Giang', 'sector': 'Healthcare'},
-            'IMP': {'name': 'Công ty CP Dược phẩm Imexpharm', 'sector': 'Healthcare'},
-            'DBD': {'name': 'Công ty CP Dược Đồng Bình Dương', 'sector': 'Healthcare'},
-            'PME': {'name': 'Công ty CP Dược phẩm Mediplantex', 'sector': 'Healthcare'}
+            'GAS': {'name': 'Tổng Công ty Khí Việt Nam', 'sector': 'Utilities'}
         }
     
     def get_ticker_news(self, symbol: str, limit: int = 5) -> Dict[str, Any]:
@@ -105,9 +82,30 @@ class TickerNews:
         symbol = symbol.upper().strip()
         
         try:
-            # Check if VN stock (now supports 70+ stocks)
-            if symbol in self.vn_stocks:
-                return asyncio.run(self._get_vn_comprehensive_news(symbol, limit))
+            # Get VN stocks from API (handle async properly)
+            try:
+                loop = asyncio.get_event_loop()
+                if loop.is_running():
+                    # If already in async context, use cached data or fallback
+                    vn_stocks = self._vn_stocks_cache or self._get_fallback_vn_stocks()
+                else:
+                    vn_stocks = asyncio.run(self._get_vn_stocks())
+            except RuntimeError:
+                # Fallback if async issues
+                vn_stocks = self._vn_stocks_cache or self._get_fallback_vn_stocks()
+            
+            # Check if VN stock using real API data
+            vn_api = self._get_vn_api()
+            if vn_api and vn_api.is_vn_stock(symbol):
+                try:
+                    loop = asyncio.get_event_loop()
+                    if loop.is_running():
+                        # Use sync fallback if in async context
+                        return self._get_fallback_news(symbol, limit, vn_stocks)
+                    else:
+                        return asyncio.run(self._get_vn_comprehensive_news(symbol, limit, vn_stocks))
+                except RuntimeError:
+                    return self._get_fallback_news(symbol, limit, vn_stocks)
             else:
                 # International stocks
                 return self._get_international_news(symbol, limit)
@@ -116,14 +114,14 @@ class TickerNews:
             logger.error(f"Error getting news for {symbol}: {e}")
             return self._get_fallback_news(symbol, limit)
     
-    async def _get_vn_comprehensive_news(self, symbol: str, limit: int) -> Dict[str, Any]:
+    async def _get_vn_comprehensive_news(self, symbol: str, limit: int, vn_stocks: Dict[str, Dict[str, str]]) -> Dict[str, Any]:
         """Get VN stock news from multiple sources"""
         try:
             # Try VNStock first, then fallback
             vnstock_result = await self._get_vnstock_news(symbol, limit)
             
             if vnstock_result.get('news') and len(vnstock_result['news']) > 0:
-                stock_info = self.vn_stocks[symbol]
+                stock_info = vn_stocks.get(symbol, {'name': f'Công ty {symbol}', 'sector': 'Unknown'})
                 return {
                     "symbol": symbol,
                     "company_name": stock_info['name'],
@@ -135,11 +133,11 @@ class TickerNews:
                 }
             else:
                 # Fallback to enhanced mock news
-                return self._get_fallback_news(symbol, limit)
+                return self._get_fallback_news(symbol, limit, vn_stocks)
                 
         except Exception as e:
             logger.error(f"VN comprehensive news failed for {symbol}: {e}")
-            return self._get_fallback_news(symbol, limit)
+            return self._get_fallback_news(symbol, limit, vn_stocks)
     
     async def _get_vnstock_news(self, symbol: str, limit: int) -> Dict[str, Any]:
         """Get news from VNStock API"""
@@ -206,9 +204,13 @@ class TickerNews:
         except:
             return datetime.now().strftime('%Y-%m-%d %H:%M')
     
-    def _get_fallback_news(self, symbol: str, limit: int) -> Dict[str, Any]:
+    def _get_fallback_news(self, symbol: str, limit: int, vn_stocks: Dict[str, Dict[str, str]] = None) -> Dict[str, Any]:
         """Enhanced fallback news with sector-specific content"""
-        stock_info = self.vn_stocks.get(symbol, {'name': f'Công ty {symbol}', 'sector': 'Unknown'})
+        if vn_stocks is None:
+            # Try to get from cache or use minimal fallback
+            vn_stocks = self._vn_stocks_cache or self._get_fallback_vn_stocks()
+        
+        stock_info = vn_stocks.get(symbol, {'name': f'Công ty {symbol}', 'sector': 'Unknown'})
         sector = stock_info['sector']
         company_name = stock_info['name']
         

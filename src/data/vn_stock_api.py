@@ -108,14 +108,24 @@ class VNStockAPI:
         
         symbol = symbol.upper().strip()
         
-        # Kiểm tra trong danh sách VN stocks
+        # Kiểm tra trong danh sách VN stocks từ available symbols
+        try:
+            # Try to get from cache first
+            if hasattr(self, '_available_symbols_cache') and self._available_symbols_cache:
+                available_symbols = [s['symbol'] for s in self._available_symbols_cache]
+                if symbol in available_symbols:
+                    return True
+        except:
+            pass
+        
+        # Kiểm tra trong danh sách VN stocks static
         if symbol in self.vn_stocks:
             return True
         
         # Kiểm tra pattern VN stock (3-4 ký tự, không chứa số ở cuối)
         if len(symbol) >= 3 and len(symbol) <= 4 and symbol.isalpha():
             # Các pattern thường gặp của VN stocks
-            vn_patterns = ['VCB', 'BID', 'CTG', 'TCB', 'ACB', 'VIC', 'VHM', 'HPG', 'FPT', 'MSN']
+            vn_patterns = ['VCB', 'BID', 'CTG', 'TCB', 'ACB', 'VIC', 'VHM', 'HPG', 'FPT', 'MSN', 'DHG']
             if any(symbol.startswith(p[:2]) for p in vn_patterns):
                 return True
             
@@ -665,6 +675,10 @@ class VNStockAPI:
         Lấy danh sách symbols từ CrewAI real data thay vì vnstock
         """
         try:
+            # Check cache first
+            if hasattr(self, '_available_symbols_cache') and self._available_symbols_cache:
+                return self._available_symbols_cache
+            
             # Use CrewAI for real symbols if available
             if self.crewai_collector and self.crewai_collector.enabled:
                 logger.info("🤖 Getting stock symbols from CrewAI real data")
@@ -674,6 +688,8 @@ class VNStockAPI:
                     # Mark as real data
                     for symbol in symbols:
                         symbol['data_source'] = 'CrewAI'
+                    # Cache the result
+                    self._available_symbols_cache = symbols
                     return symbols
             
             # Fallback to enhanced static list
@@ -682,6 +698,8 @@ class VNStockAPI:
             # Mark as static data
             for symbol in static_symbols:
                 symbol['data_source'] = 'Static'
+            # Cache the result
+            self._available_symbols_cache = static_symbols
             return static_symbols
             
         except Exception as e:
@@ -689,6 +707,8 @@ class VNStockAPI:
             static_symbols = self._get_static_symbols()
             for symbol in static_symbols:
                 symbol['data_source'] = 'Static'
+            # Cache the result
+            self._available_symbols_cache = static_symbols
             return static_symbols
     
     def is_using_real_data(self) -> bool:

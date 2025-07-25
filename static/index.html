@@ -3,147 +3,441 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>🤖 AI Stock Analysis Vietnam</title>
-    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <title>📈 DUONG AI TRADING PRO - Professional Stock Analysis</title>
+    
+    <!-- Professional Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500;700&display=swap" rel="stylesheet">
+    
+    <!-- Professional Icons -->
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+    
+    <!-- Professional CSS -->
     <link rel="stylesheet" href="/static/styles.css">
+    
+    <!-- Meta Tags for SEO -->
+    <meta name="description" content="Professional AI-powered stock analysis system for Vietnamese and international markets">
+    <meta name="keywords" content="stock analysis, AI trading, Vietnam stock market, investment, financial analysis">
+    <meta name="author" content="Duong AI Trading Pro">
+    
+    <!-- Open Graph Meta Tags -->
+    <meta property="og:title" content="DUONG AI TRADING PRO">
+    <meta property="og:description" content="Professional AI-powered stock analysis system">
+    <meta property="og:type" content="website">
+    <meta property="og:image" content="/static/og-image.png">
+    
+    <!-- Favicon -->
+    <link rel="icon" type="image/x-icon" href="/static/favicon.ico">
 </head>
 <body>
-    <div class="container">
-        <div class="header">
-            <h1><i class="fas fa-robot"></i> AI Stock Analysis Vietnam</h1>
-            <p>Hệ thống phân tích cổ phiếu thông minh với 6 AI Agents chuyên nghiệp</p>
-            <div style="margin-top: 15px; font-size: 0.9rem; opacity: 0.9;">
-                📈 PricePredictor • 📰 TickerNews • 🌍 MarketNews • 💼 InvestmentExpert • ⚠️ RiskExpert • 🧠 GeminiAgent
+    <!-- Professional Loading Screen -->
+    <div id="loadingScreen" class="loading-screen">
+        <div class="loading-content">
+            <div class="loading-logo">
+                <i class="fas fa-chart-line"></i>
             </div>
-        </div>
-        
-        <div class="main-content">
-            <!-- Gemini API Key Section -->
-            <div class="api-key-section">
-                <div class="api-key-card">
-                    <h3><i class="fas fa-key"></i> Cài đặt Gemini API Key</h3>
-                    <div class="api-key-input">
-                        <input type="password" id="geminiApiKey" placeholder="Nhập Google Gemini API Key" />
-                        <button id="btn-set-api-key" class="btn-primary">
-                            <i class="fas fa-save"></i> Cài đặt
-                        </button>
-                    </div>
-                    <div id="api-key-status" class="api-key-status"></div>
-                    <p class="api-key-help">
-                        <i class="fas fa-info-circle"></i> 
-                        Lấy API key miễn phí tại: <a href="https://makersuite.google.com/app/apikey" target="_blank">Google AI Studio</a>
-                    </p>
-                </div>
+            <div class="loading-title">DUONG AI TRADING PRO</div>
+            <div class="loading-subtitle">Initializing AI Agents...</div>
+            <div class="loading-progress">
+                <div class="progress-bar"></div>
             </div>
-            
-            <div class="tabs">
-                <button class="tab active" data-tab="analysis"><i class="fas fa-chart-line"></i> Phân tích cổ phiếu</button>
-                <button class="tab" data-tab="vn-market"><i class="fas fa-flag"></i> Thị trường VN</button>
-                <button class="tab" data-tab="features"><i class="fas fa-star"></i> Tính năng</button>
-            </div>
-            
-            <!-- Tab Phân tích cổ phiếu -->
-            <div id="analysis" class="tab-content active">
-                <div class="input-section">
-                    <div class="input-group">
-                        <div class="input-wrapper">
-                            <label><i class="fas fa-search"></i> Mã cổ phiếu</label>
-                            <input type="text" id="symbol" placeholder="VD: AAPL, VCB, TSLA..." />
-                        </div>
-                        <div class="input-wrapper">
-                            <label><i class="fas fa-comments"></i> Hỏi Gemini AI </label>
-                            <input type="text" id="query" placeholder="VD: Phân tích VCB có nên mua không? Dự đoán giá HPG?" />
-                        </div>
-                    </div>
-                    
-                    <div class="btn-group">
-                        <button id="btn-analyze" class="btn-primary">
-                            <i class="fas fa-chart-bar"></i> Phân tích toàn diện
-                        </button>
-                        <button id="btn-predict" class="btn-success">
-                            <i class="fas fa-crystal-ball"></i> Dự đoán giá
-                        </button>
-                        <button id="btn-news" class="btn-warning">
-                            <i class="fas fa-newspaper"></i> Tin tức
-                        </button>
-                        <button id="btn-risk" class="btn-danger">
-                            <i class="fas fa-exclamation-triangle"></i> Đánh giá rủi ro
-                        </button>
-                        <button id="btn-query" class="btn-secondary">
-                            <i class="fas fa-magic"></i> Gửi câu hỏi
-                        </button>
-                        <button id="btn-market" class="btn-secondary">
-                            <i class="fas fa-globe"></i> Tin tức thị trường
-                        </button>
-                    </div>
-                </div>
-            </div>
-            
-            <!-- Tab Thị trường VN -->
-            <div id="vn-market" class="tab-content">
-                <div class="input-section">
-                    <h3><i class="fas fa-flag"></i> Cổ phiếu Việt Nam</h3>
-                    <p>Chọn mã cổ phiếu VN để phân tích:</p>
-                    
-                    <div class="vn-stocks" id="vnStocks"></div>
-                    
-                    <div class="btn-group">
-                        <button id="btn-vn-stock" class="btn-primary">
-                            <i class="fas fa-chart-line"></i> Phân tích cổ phiếu VN
-                        </button>
-                        <button id="btn-vn-market" class="btn-success">
-                            <i class="fas fa-building"></i> Tổng quan thị trường VN
-                        </button>
-                        <button id="btn-vn-symbols" class="btn-warning">
-                            <i class="fas fa-list"></i> Danh sách mã cổ phiếu
-                        </button>
-                    </div>
-                </div>
-            </div>
-            
-            <!-- Tab Tính năng -->
-            <div id="features" class="tab-content">
-                <div class="features">
-                    <div class="feature-card">
-                        <div class="feature-icon"><i class="fas fa-robot"></i></div>
-                        <div class="feature-title">6 AI Agents</div>
-                        <div class="feature-desc">Price Predictor, News Analyzer, Investment Expert, Risk Manager, Market News, Main Coordinator</div>
-                    </div>
-                    <div class="feature-card">
-                        <div class="feature-icon"><i class="fas fa-chart-line"></i></div>
-                        <div class="feature-title">Phân tích kỹ thuật</div>
-                        <div class="feature-desc">Moving Average, RSI, Volatility, Beta, Max Drawdown</div>
-                    </div>
-                    <div class="feature-card">
-                        <div class="feature-icon"><i class="fas fa-newspaper"></i></div>
-                        <div class="feature-title">Tin tức real-time</div>
-                        <div class="feature-desc">Tin tức từ Yahoo Finance và các nguồn uy tín</div>
-                    </div>
-                    <div class="feature-card">
-                        <div class="feature-icon"><i class="fas fa-flag"></i></div>
-                        <div class="feature-title">Thị trường VN</div>
-                        <div class="feature-desc">Hỗ trợ 18+ mã cổ phiếu VN phổ biến</div>
-                    </div>
-                    <div class="feature-card">
-                        <div class="feature-icon"><i class="fas fa-shield-alt"></i></div>
-                        <div class="feature-title">Quản lý rủi ro</div>
-                        <div class="feature-desc">Đánh giá rủi ro HIGH/MEDIUM/LOW</div>
-                    </div>
-                    <div class="feature-card">
-                        <div class="feature-icon"><i class="fas fa-magic"></i></div>
-                        <div class="feature-title">Truy vấn tự nhiên</div>
-                        <div class="feature-desc">Hỏi bằng tiếng Việt hoặc tiếng Anh</div>
-                    </div>
-                </div>
-            </div>
-            
-            <div id="result" class="result" style="display:none;"></div>
         </div>
     </div>
-    
-    <!-- Toast Notification -->
+
+    <!-- Professional Navigation -->
+    <nav class="navbar">
+        <div class="nav-container">
+            <div class="nav-brand">
+                <i class="fas fa-chart-line"></i>
+                <span>DUONG AI TRADING PRO</span>
+            </div>
+            <div class="nav-menu">
+                <a href="#dashboard" class="nav-link active">
+                    <i class="fas fa-tachometer-alt"></i>
+                    Dashboard
+                </a>
+                <a href="#analysis" class="nav-link">
+                    <i class="fas fa-chart-bar"></i>
+                    Analysis
+                </a>
+                <a href="#portfolio" class="nav-link">
+                    <i class="fas fa-briefcase"></i>
+                    Portfolio
+                </a>
+                <a href="#news" class="nav-link">
+                    <i class="fas fa-newspaper"></i>
+                    News
+                </a>
+                <a href="#settings" class="nav-link">
+                    <i class="fas fa-cog"></i>
+                    Settings
+                </a>
+            </div>
+            <div class="nav-actions">
+                <button class="btn-notification">
+                    <i class="fas fa-bell"></i>
+                    <span class="notification-badge">3</span>
+                </button>
+                <div class="user-menu">
+                    <img src="/static/user-avatar.png" alt="User" class="user-avatar">
+                    <span class="user-name">Professional Trader</span>
+                </div>
+            </div>
+        </div>
+    </nav>
+
+    <!-- Main Container -->
+    <div class="main-container">
+        <!-- Professional Sidebar -->
+        <aside class="sidebar">
+            <div class="sidebar-header">
+                <h3><i class="fas fa-cogs"></i> System Configuration</h3>
+                <p>Setup APIs and investment parameters</p>
+            </div>
+
+            <!-- API Configuration Section -->
+            <div class="sidebar-section">
+                <h4><i class="fas fa-key"></i> API Configuration</h4>
+                
+                <div class="input-group">
+                    <label for="geminiApiKey">
+                        <i class="fab fa-google"></i>
+                        Gemini API Key
+                    </label>
+                    <input type="password" id="geminiApiKey" placeholder="Enter Google Gemini API key...">
+                    <small class="input-help">
+                        <i class="fas fa-info-circle"></i>
+                        Get your API key at: <a href="https://aistudio.google.com/apikey" target="_blank">Google AI Studio</a>
+                    </small>
+                </div>
+
+                <div class="input-group">
+                    <label for="serperApiKey">
+                        <i class="fas fa-search"></i>
+                        Serper API Key (Optional)
+                    </label>
+                    <input type="password" id="serperApiKey" placeholder="Enter Serper API key...">
+                    <small class="input-help">
+                        <i class="fas fa-info-circle"></i>
+                        Get your API key at: <a href="https://serper.dev/api-key" target="_blank">Serper.dev</a>
+                    </small>
+                </div>
+
+                <div class="button-group">
+                    <button id="btn-setup-gemini" class="btn btn-primary">
+                        <i class="fas fa-robot"></i>
+                        Setup Gemini
+                    </button>
+                    <button id="btn-setup-crewai" class="btn btn-secondary">
+                        <i class="fas fa-users"></i>
+                        Setup CrewAI
+                    </button>
+                </div>
+            </div>
+
+            <!-- AI Agents Status -->
+            <div class="sidebar-section">
+                <h4><i class="fas fa-robot"></i> AI Agents Status</h4>
+                <div class="agents-status" id="agentsStatus">
+                    <!-- Agents will be populated by JavaScript -->
+                </div>
+            </div>
+
+            <!-- Investment Settings -->
+            <div class="sidebar-section">
+                <h4><i class="fas fa-chart-pie"></i> Investment Settings</h4>
+                
+                <div class="input-group">
+                    <label for="timeHorizon">
+                        <i class="fas fa-clock"></i>
+                        Investment Horizon
+                    </label>
+                    <select id="timeHorizon">
+                        <option value="short">Short-term (1-3 months)</option>
+                        <option value="medium" selected>Medium-term (3-12 months)</option>
+                        <option value="long">Long-term (1+ years)</option>
+                    </select>
+                </div>
+
+                <div class="input-group">
+                    <label for="riskTolerance">
+                        <i class="fas fa-exclamation-triangle"></i>
+                        Risk Tolerance: <span id="riskValue">50</span>%
+                    </label>
+                    <input type="range" id="riskTolerance" min="0" max="100" value="50" class="range-slider">
+                    <div class="risk-labels">
+                        <span>Conservative</span>
+                        <span>Balanced</span>
+                        <span>Aggressive</span>
+                    </div>
+                </div>
+
+                <div class="input-group">
+                    <label for="investmentAmount">
+                        <i class="fas fa-dollar-sign"></i>
+                        Investment Amount (VND)
+                    </label>
+                    <input type="number" id="investmentAmount" value="100000000" min="1000000" step="10000000">
+                </div>
+
+                <div class="investment-profile" id="investmentProfile">
+                    <!-- Profile will be updated by JavaScript -->
+                </div>
+            </div>
+
+            <!-- Stock Selection -->
+            <div class="sidebar-section">
+                <h4><i class="fas fa-chart-line"></i> Stock Selection</h4>
+                
+                <div class="input-group">
+                    <label for="sectorSelect">
+                        <i class="fas fa-industry"></i>
+                        Select Sector
+                    </label>
+                    <select id="sectorSelect">
+                        <option value="">Loading sectors...</option>
+                    </select>
+                </div>
+
+                <div class="input-group">
+                    <label for="stockSelect">
+                        <i class="fas fa-building"></i>
+                        Select Stock
+                    </label>
+                    <select id="stockSelect">
+                        <option value="">Select a sector first</option>
+                    </select>
+                </div>
+
+                <div class="data-source-indicator" id="dataSourceIndicator">
+                    <!-- Data source will be shown here -->
+                </div>
+            </div>
+        </aside>
+
+        <!-- Main Content Area -->
+        <main class="main-content">
+            <!-- Professional Header -->
+            <header class="content-header">
+                <div class="header-left">
+                    <h1>Stock Analysis Dashboard</h1>
+                    <p>Professional AI-powered investment analysis</p>
+                </div>
+                <div class="header-right">
+                    <div class="market-status">
+                        <div class="status-item">
+                            <span class="status-label">VN-Index</span>
+                            <span class="status-value positive">1,234.56 <small>+1.23%</small></span>
+                        </div>
+                        <div class="status-item">
+                            <span class="status-label">Market Status</span>
+                            <span class="status-badge open">OPEN</span>
+                        </div>
+                    </div>
+                </div>
+            </header>
+
+            <!-- Professional Tabs -->
+            <div class="tabs-container">
+                <div class="tabs-nav">
+                    <button class="tab-btn active" data-tab="analysis">
+                        <i class="fas fa-chart-bar"></i>
+                        Stock Analysis
+                    </button>
+                    <button class="tab-btn" data-tab="chatbot">
+                        <i class="fas fa-comments"></i>
+                        AI Chatbot
+                    </button>
+                    <button class="tab-btn" data-tab="market">
+                        <i class="fas fa-globe"></i>
+                        VN Market
+                    </button>
+                    <button class="tab-btn" data-tab="news">
+                        <i class="fas fa-newspaper"></i>
+                        Stock News
+                    </button>
+                    <button class="tab-btn" data-tab="company">
+                        <i class="fas fa-building"></i>
+                        Company Info
+                    </button>
+                    <button class="tab-btn" data-tab="global">
+                        <i class="fas fa-world"></i>
+                        Global News
+                    </button>
+                </div>
+
+                <!-- Tab Content -->
+                <div class="tabs-content">
+                    <!-- Stock Analysis Tab -->
+                    <div id="analysis" class="tab-content active">
+                        <div class="analysis-header">
+                            <h2>Comprehensive Stock Analysis</h2>
+                            <p>AI-powered analysis with 6 specialized agents</p>
+                        </div>
+
+                        <div class="analysis-controls">
+                            <button id="btn-full-analysis" class="btn btn-primary btn-large">
+                                <i class="fas fa-rocket"></i>
+                                Full Analysis
+                            </button>
+                            <button id="btn-price-prediction" class="btn btn-success">
+                                <i class="fas fa-chart-line"></i>
+                                Price Prediction
+                            </button>
+                            <button id="btn-risk-assessment" class="btn btn-warning">
+                                <i class="fas fa-shield-alt"></i>
+                                Risk Assessment
+                            </button>
+                            <button id="btn-investment-analysis" class="btn btn-info">
+                                <i class="fas fa-briefcase"></i>
+                                Investment Analysis
+                            </button>
+                        </div>
+
+                        <div id="analysisResults" class="analysis-results">
+                            <!-- Results will be populated here -->
+                        </div>
+                    </div>
+
+                    <!-- AI Chatbot Tab -->
+                    <div id="chatbot" class="tab-content">
+                        <div class="chatbot-container">
+                            <div class="chat-header">
+                                <h2><i class="fas fa-robot"></i> AI Investment Advisor</h2>
+                                <p>Ask questions about stocks and get expert AI analysis</p>
+                            </div>
+
+                            <div class="chat-messages" id="chatMessages">
+                                <div class="chat-message bot">
+                                    <div class="message-avatar">
+                                        <i class="fas fa-robot"></i>
+                                    </div>
+                                    <div class="message-content">
+                                        <p>Hello! I'm your AI investment advisor. Ask me anything about stocks, market analysis, or investment strategies.</p>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div class="chat-input-container">
+                                <div class="chat-input-group">
+                                    <input type="text" id="chatInput" placeholder="Ask about stocks, market trends, investment advice...">
+                                    <button id="btn-send-message" class="btn btn-primary">
+                                        <i class="fas fa-paper-plane"></i>
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- VN Market Tab -->
+                    <div id="market" class="tab-content">
+                        <div class="market-overview">
+                            <h2>Vietnam Stock Market Overview</h2>
+                            <button id="btn-refresh-market" class="btn btn-primary">
+                                <i class="fas fa-sync-alt"></i>
+                                Refresh Market Data
+                            </button>
+                        </div>
+                        <div id="marketData" class="market-data">
+                            <!-- Market data will be populated here -->
+                        </div>
+                    </div>
+
+                    <!-- Stock News Tab -->
+                    <div id="news" class="tab-content">
+                        <div class="news-header">
+                            <h2>Stock News & Analysis</h2>
+                            <button id="btn-refresh-news" class="btn btn-primary">
+                                <i class="fas fa-sync-alt"></i>
+                                Get Latest News
+                            </button>
+                        </div>
+                        <div id="newsContent" class="news-content">
+                            <!-- News will be populated here -->
+                        </div>
+                    </div>
+
+                    <!-- Company Info Tab -->
+                    <div id="company" class="tab-content">
+                        <div class="company-header">
+                            <h2>Company Information & Analysis</h2>
+                            <button id="btn-company-analysis" class="btn btn-primary">
+                                <i class="fas fa-search"></i>
+                                Analyze Company
+                            </button>
+                        </div>
+                        <div id="companyContent" class="company-content">
+                            <!-- Company info will be populated here -->
+                        </div>
+                    </div>
+
+                    <!-- Global News Tab -->
+                    <div id="global" class="tab-content">
+                        <div class="global-news-header">
+                            <h2>Global Market News</h2>
+                            <button id="btn-global-news" class="btn btn-primary">
+                                <i class="fas fa-globe"></i>
+                                Get Global News
+                            </button>
+                        </div>
+                        <div id="globalNewsContent" class="global-news-content">
+                            <!-- Global news will be populated here -->
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <!-- Professional Footer -->
+    <footer class="footer">
+        <div class="footer-content">
+            <div class="footer-section">
+                <h4>🇻🇳 DUONG AI TRADING PRO</h4>
+                <p>Professional AI-powered stock analysis system for Vietnamese & international markets</p>
+                <div class="footer-badges">
+                    <span class="badge">6 AI Agents</span>
+                    <span class="badge">Real-time Data</span>
+                    <span class="badge">Professional Grade</span>
+                </div>
+            </div>
+            <div class="footer-section">
+                <h4>Features</h4>
+                <ul>
+                    <li>Advanced Price Prediction</li>
+                    <li>Risk Assessment</li>
+                    <li>Investment Analysis</li>
+                    <li>Real-time News</li>
+                    <li>Market Sentiment</li>
+                </ul>
+            </div>
+            <div class="footer-section">
+                <h4>Technology</h4>
+                <ul>
+                    <li>Google Gemini AI</li>
+                    <li>CrewAI Framework</li>
+                    <li>VNStock API</li>
+                    <li>FastAPI Backend</li>
+                    <li>Real-time Analytics</li>
+                </ul>
+            </div>
+            <div class="footer-section">
+                <h4>Disclaimer</h4>
+                <p class="disclaimer">
+                    <strong>⚠️ Important:</strong> This is an analysis tool, NOT investment advice. 
+                    Always conduct your own research and only invest money you can afford to lose.
+                </p>
+            </div>
+        </div>
+        <div class="footer-bottom">
+            <p>&copy; 2024 DUONG AI TRADING PRO. All rights reserved. | Version 2.0 Professional</p>
+        </div>
+    </footer>
+
+    <!-- Toast Notifications -->
     <div id="toast" class="toast"></div>
 
+    <!-- Professional JavaScript -->
     <script src="/static/script.js"></script>
 </body>
 </html>
