@@ -1,38 +1,185 @@
 import google.generativeai as genai
+import openai
 import os
 import logging
 from dotenv import load_dotenv
+from typing import Dict, Any, Optional, List
+import asyncio
+import json
 
 load_dotenv()
 logger = logging.getLogger(__name__)
 
-class GeminiAgent:
-    def __init__(self, api_key: str = None):
-        # Try API key from parameter first, then .env as fallback
-        if not api_key:
-            api_key = os.getenv('GOOGLE_API_KEY')
+class UnifiedAIAgent:
+    def __init__(self, gemini_api_key: str = None, openai_api_key: str = None):
+        """
+        Initialize Unified AI Agent with multiple AI models
+        """
+        self.available_models = {}
+        self.model_capabilities = {
+            'gemini': {
+                'strengths': ['analysis', 'vietnamese', 'reasoning', 'financial_advice'],
+                'speed': 'fast',
+                'cost': 'low'
+            },
+            'chatgpt': {
+                'strengths': ['prediction', 'technical_analysis', 'news_analysis', 'risk_assessment'],
+                'speed': 'medium',
+                'cost': 'medium'
+            }
+        }
         
-        if not api_key:
-            raise ValueError("API key required. Provide via parameter or GOOGLE_API_KEY env var")
+        # Initialize Gemini
+        if not gemini_api_key:
+            gemini_api_key = os.getenv('GOOGLE_API_KEY')
         
-        try:
-            genai.configure(api_key=api_key)
-            model_name = os.getenv('GEMINI_MODEL', 'gemini-1.5-flash')
-            self.model = genai.GenerativeModel(model_name)
-            self.api_key = api_key
-        except Exception as e:
-            raise ValueError(f"Failed to initialize Gemini: {str(e)}")
+        if gemini_api_key:
+            try:
+                genai.configure(api_key=gemini_api_key)
+                model_name = os.getenv('GEMINI_MODEL', 'gemini-1.5-flash')
+                self.available_models['gemini'] = genai.GenerativeModel(model_name)
+                self.gemini_api_key = gemini_api_key
+                logger.info("✅ Gemini AI initialized successfully")
+            except Exception as e:
+                logger.error(f"❌ Failed to initialize Gemini: {str(e)}")
+        
+        # Initialize OpenAI
+        if not openai_api_key:
+            openai_api_key = os.getenv('OPENAI_API_KEY')
+        
+        if openai_api_key:
+            try:
+                self.openai_client = openai.OpenAI(api_key=openai_api_key)
+                self.available_models['chatgpt'] = self.openai_client
+                self.openai_api_key = openai_api_key
+                logger.info("✅ ChatGPT AI initialized successfully")
+            except Exception as e:
+                logger.error(f"❌ Failed to initialize ChatGPT: {str(e)}")
+        
+        if not self.available_models:
+            raise ValueError("At least one AI model must be configured. Please provide API keys.")
     
     def test_connection(self):
-        """Test API connection"""
+        """Test API connections for all available models"""
+        results = {}
+        
+        if 'gemini' in self.available_models:
+            try:
+                response = self.available_models['gemini'].generate_content("Hello")
+                results['gemini'] = True
+                logger.info("✅ Gemini connection test passed")
+            except Exception as e:
+                results['gemini'] = False
+                logger.error(f"❌ Gemini connection test failed: {str(e)}")
+        
+        if 'chatgpt' in self.available_models:
+            try:
+                response = self.available_models['chatgpt'].chat.completions.create(
+                    model="gpt-3.5-turbo",
+                    messages=[{"role": "user", "content": "Hello"}],
+                    max_tokens=10
+                )
+                results['chatgpt'] = True
+                logger.info("✅ ChatGPT connection test passed")
+            except Exception as e:
+                results['chatgpt'] = False
+                logger.error(f"❌ ChatGPT connection test failed: {str(e)}")
+        
+        if not any(results.values()):
+            raise ValueError("All API connection tests failed")
+        
+        return results
+    
+    def select_best_model(self, task_type: str) -> str:
+        """
+        Automatically select the best AI model for a specific task type
+        """
+        task_model_mapping = {
+            'financial_advice': 'gemini',  # Gemini better for Vietnamese financial advice
+            'price_prediction': 'chatgpt',  # ChatGPT better for technical analysis
+            'risk_assessment': 'chatgpt',   # ChatGPT better for risk calculations
+            'news_analysis': 'chatgpt',     # ChatGPT better for news sentiment
+            'market_analysis': 'gemini',    # Gemini better for market reasoning
+            'investment_analysis': 'chatgpt', # ChatGPT better for investment metrics
+            'general_query': 'gemini'       # Gemini better for general Vietnamese queries
+        }
+        
+        preferred_model = task_model_mapping.get(task_type, 'gemini')
+        
+        # Check if preferred model is available, otherwise use any available
+        if preferred_model in self.available_models:
+            return preferred_model
+        elif self.available_models:
+            return list(self.available_models.keys())[0]
+        else:
+            raise ValueError("No AI models available")
+    
+    def generate_with_model(self, prompt: str, model_name: str, max_tokens: int = 1000) -> str:
+        """
+        Generate response using specific AI model
+        """
         try:
-            response = self.model.generate_content("Hello")
-            return True
+            if model_name == 'gemini' and 'gemini' in self.available_models:
+                response = self.available_models['gemini'].generate_content(prompt)
+                return response.text
+            
+            elif model_name == 'chatgpt' and 'chatgpt' in self.available_models:
+                response = self.available_models['chatgpt'].chat.completions.create(
+                    model="gpt-3.5-turbo",
+                    messages=[{"role": "user", "content": prompt}],
+                    max_tokens=max_tokens,
+                    temperature=0.7
+                )
+                return response.choices[0].message.content
+            
+            else:
+                raise ValueError(f"Model {model_name} not available")
+                
         except Exception as e:
-            raise ValueError(f"API key test failed: {str(e)}")
+            logger.error(f"Error generating with {model_name}: {str(e)}")
+            raise
+    
+    def generate_with_fallback(self, prompt: str, task_type: str, max_tokens: int = 1000) -> Dict[str, Any]:
+        """
+        Generate response with automatic fallback to other models if primary fails
+        """
+        primary_model = self.select_best_model(task_type)
+        
+        try:
+            response = self.generate_with_model(prompt, primary_model, max_tokens)
+            return {
+                'response': response,
+                'model_used': primary_model,
+                'success': True
+            }
+        except Exception as e:
+            logger.warning(f"Primary model {primary_model} failed: {str(e)}")
+            
+            # Try other available models
+            for model_name in self.available_models.keys():
+                if model_name != primary_model:
+                    try:
+                        response = self.generate_with_model(prompt, model_name, max_tokens)
+                        return {
+                            'response': response,
+                            'model_used': model_name,
+                            'success': True,
+                            'fallback': True
+                        }
+                    except Exception as fallback_error:
+                        logger.warning(f"Fallback model {model_name} also failed: {str(fallback_error)}")
+                        continue
+            
+            # If all models fail
+            return {
+                'response': f"Lỗi: Tất cả AI models đều không khả dụng. Task: {task_type}",
+                'model_used': None,
+                'success': False,
+                'error': str(e)
+            }
     
     def generate_expert_advice(self, query: str, symbol: str = None, data: dict = None):
-        """Generate expert financial advice using Gemini with enhanced capabilities"""
+        """Generate expert financial advice using best available AI model with fallback"""
         
         # Detect query type for better handling
         query_type = self.detect_query_type(query)
@@ -41,7 +188,7 @@ class GeminiAgent:
         if not symbol and query_type == "general":
             return self.generate_general_response(query)
         
-        # Handle stock-specific questions
+        # Build comprehensive context for stock analysis
         context = f"""
 Bạn là một chuyên gia tài chính hàng đầu với 20 năm kinh nghiệm đầu tư chứng khoán tại Việt Nam và quốc tế.
 Hãy phân tích sâu sắc và đưa ra lời khuyên chuyên nghiệp nhất.
@@ -79,41 +226,41 @@ CẢNH BÁO RỦI RO:
 Lưu ý: Trả lời bằng tiếng Việt, dựa trên dữ liệu thực tế, không đưa lời khuyên tuyệt đối.
 """
         
+        # Use the new unified AI system with fallback
         try:
-            # Generate content with safety settings
-            response = self.model.generate_content(
-                context,
-                generation_config=genai.types.GenerationConfig(
-                    temperature=0.7,
-                    max_output_tokens=2048,
-                )
-            )
+            result = self.generate_with_fallback(context, 'financial_advice', max_tokens=2048)
             
-            if response.text:
-                return self._parse_response(response.text)
+            if result['success']:
+                parsed_response = self._parse_response(result['response'])
+                
+                # Add model info to response
+                if result.get('fallback'):
+                    parsed_response['expert_advice'] += f"\n\n🤖 **AI Model:** {result['model_used']} (fallback)"
+                else:
+                    parsed_response['expert_advice'] += f"\n\n🤖 **AI Model:** {result['model_used']}"
+                
+                return parsed_response
             else:
                 return {
-                    "expert_advice": "Xin lỗi, tôi không thể tạo phản hồi cho câu hỏi này.",
-                    "recommendations": ["Thử đặt câu hỏi khác", "Kiểm tra nội dung câu hỏi"]
+                    "expert_advice": f"❌ **LỖI AI SYSTEM:**\n{result.get('response', 'Không thể kết nối với AI models')}\n\n⚠️ **GỢI Ý:**\n- Kiểm tra API keys\n- Thử lại sau vài phút\n- Liên hệ hỗ trợ nếu vấn đề tiếp tục",
+                    "recommendations": [
+                        "Kiểm tra API keys (Gemini/OpenAI)",
+                        "Thử lại sau vài phút", 
+                        "Liên hệ hỗ trợ kỹ thuật",
+                        "Sử dụng chế độ offline"
+                    ]
                 }
                 
         except Exception as e:
-            error_msg = str(e)
-            if "API_KEY" in error_msg.upper():
-                return {
-                    "expert_advice": "Lỗi API Key: Vui lòng kiểm tra GOOGLE_API_KEY trong file .env",
-                    "recommendations": ["Kiểm tra API key", "Thử tạo API key mới"]
-                }
-            elif "QUOTA" in error_msg.upper() or "LIMIT" in error_msg.upper():
-                return {
-                    "expert_advice": "Lỗi giới hạn API: Đã vượt quá giới hạn sử dụng",
-                    "recommendations": ["Chờ vài phút rồi thử lại", "Kiểm tra quota API"]
-                }
-            else:
-                return {
-                    "expert_advice": f"Lỗi hệ thống: {error_msg}",
-                    "recommendations": ["Thử lại sau", "Liên hệ hỗ trợ nếu vấn đề tiếp tục"]
-                }
+            logger.error(f"Critical error in generate_expert_advice: {str(e)}")
+            return {
+                "expert_advice": f"❌ **LỖI NGHIÊM TRỌNG:**\n{str(e)}\n\n⚠️ Hệ thống AI tạm thời không khả dụng.",
+                "recommendations": [
+                    "Thử lại sau 5-10 phút",
+                    "Kiểm tra kết nối internet",
+                    "Liên hệ hỗ trợ kỹ thuật"
+                ]
+            }
     
     def _parse_response(self, response_text: str):
         """Parse enhanced Gemini response"""
@@ -241,7 +388,7 @@ Lưu ý: Trả lời bằng tiếng Việt, dựa trên dữ liệu thực tế,
         return "\n".join(formatted) if formatted else "Dữ liệu không đầy đủ để phân tích"
     
     def generate_general_response(self, query: str) -> dict:
-        """Generate response for general questions (non-stock specific)"""
+        """Generate response for general questions using best available AI model"""
         try:
             # Enhanced context for general financial questions
             context = f"""
@@ -268,20 +415,15 @@ HÃY TRẢ LỜI:
 Trả lời bằng tiếng Việt, chuyên nghiệp nhưng dễ hiểu.
 """
             
-            response = self.model.generate_content(
-                context,
-                generation_config=genai.types.GenerationConfig(
-                    temperature=0.7,
-                    max_output_tokens=2048,
-                )
-            )
+            # Use unified AI system with fallback
+            result = self.generate_with_fallback(context, 'general_query', max_tokens=2048)
             
-            if response.text:
+            if result['success']:
                 return {
-                    "expert_advice": f"📈 **PHÂN TÍCH CHUYÊN GIA:**\n{response.text}\n\n⚠️ **LƯU Ý:** Đây là thông tin tham khảo, không phải lời khuyên đầu tư tuyệt đối.",
+                    "expert_advice": f"📈 **PHÂN TÍCH CHUYÊN GIA:**\n{result['response']}\n\n🤖 **AI Model:** {result['model_used']}\n\n⚠️ **LƯU Ý:** Đây là thông tin tham khảo, không phải lời khuyên đầu tư tuyệt đối.",
                     "recommendations": [
                         "Nghiên cứu thêm từ nhiều nguồn",
-                        "Tham khảo chuyên gia tài chính",
+                        "Tham khảo chuyên gia tài chính", 
                         "Đánh giá khả năng tài chính cá nhân",
                         "Chỉ đầu tư số tiền có thể chấp nhận mất"
                     ]
@@ -290,6 +432,7 @@ Trả lời bằng tiếng Việt, chuyên nghiệp nhưng dễ hiểu.
                 return self._get_fallback_response(query)
                 
         except Exception as e:
+            logger.error(f"Error in generate_general_response: {str(e)}")
             return self._get_fallback_response(query)
     
     def _get_fallback_response(self, query: str) -> dict:
@@ -321,3 +464,6 @@ Trả lời bằng tiếng Việt, chuyên nghiệp nhưng dễ hiểu.
             return "stock_specific"
         
         return "general"
+
+# Backward compatibility alias
+GeminiAgent = UnifiedAIAgent

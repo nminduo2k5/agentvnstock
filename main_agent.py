@@ -5,7 +5,7 @@ from agents.investment_expert import InvestmentExpert
 from agents.risk_expert import RiskExpert
 from agents.stock_info import StockInfoDisplay
 from agents.international_news import InternationalMarketNews
-from gemini_agent import GeminiAgent
+from gemini_agent import UnifiedAIAgent
 from src.data.vn_stock_api import VNStockAPI
 from src.utils.error_handler import handle_async_errors, AgentErrorHandler, validate_symbol
 from fastapi.concurrency import run_in_threadpool
@@ -15,7 +15,7 @@ import logging
 logger = logging.getLogger(__name__)
 
 class MainAgent:
-    def __init__(self, vn_api: VNStockAPI, gemini_api_key: str = None, serper_api_key: str = None):
+    def __init__(self, vn_api: VNStockAPI, gemini_api_key: str = None, openai_api_key: str = None, serper_api_key: str = None):
         self.vn_api = vn_api
         self.stock_info = StockInfoDisplay(vn_api)
         self.price_predictor = PricePredictor(vn_api, self.stock_info)
@@ -25,14 +25,19 @@ class MainAgent:
         self.risk_expert = RiskExpert(vn_api)
         self.international_news = InternationalMarketNews()
         
-        # Initialize Gemini with API key if provided
+        # Initialize Unified AI Agent with multiple models
         self.gemini_agent = None
-        if gemini_api_key:
+        if gemini_api_key or openai_api_key:
             try:
-                self.gemini_agent = GeminiAgent(gemini_api_key)
-                self.gemini_agent.test_connection()
+                self.gemini_agent = UnifiedAIAgent(
+                    gemini_api_key=gemini_api_key,
+                    openai_api_key=openai_api_key
+                )
+                connection_results = self.gemini_agent.test_connection()
+                active_models = [model for model, status in connection_results.items() if status]
+                print(f"✅ AI Models initialized: {', '.join(active_models)}")
             except Exception as e:
-                print(f"⚠️ Gemini initialization failed: {e}")
+                print(f"⚠️ AI initialization failed: {e}")
         
         # Update VN API with CrewAI keys
         if gemini_api_key or serper_api_key:
@@ -41,23 +46,92 @@ class MainAgent:
                 print("✅ CrewAI integration enabled for real news")
             except Exception as e:
                 print(f"⚠️ CrewAI setup failed: {e}")
+        
+        # Pass AI agent to other agents for enhanced capabilities
+        self._integrate_ai_with_agents()
+    
+    def _integrate_ai_with_agents(self):
+        """Integrate AI capabilities with all agents"""
+        if self.gemini_agent:
+            # Pass AI agent to agents that can benefit from it
+            if hasattr(self.price_predictor, 'set_ai_agent'):
+                self.price_predictor.set_ai_agent(self.gemini_agent)
+            if hasattr(self.investment_expert, 'set_ai_agent'):
+                self.investment_expert.set_ai_agent(self.gemini_agent)
+            if hasattr(self.risk_expert, 'set_ai_agent'):
+                self.risk_expert.set_ai_agent(self.gemini_agent)
+            if hasattr(self.ticker_news, 'set_ai_agent'):
+                self.ticker_news.set_ai_agent(self.gemini_agent)
+            if hasattr(self.market_news, 'set_ai_agent'):
+                self.market_news.set_ai_agent(self.gemini_agent)
+            if hasattr(self.international_news, 'set_ai_agent'):
+                self.international_news.set_ai_agent(self.gemini_agent)
     
     def set_gemini_api_key(self, api_key: str):
         """Set or update Gemini API key"""
         try:
-            self.gemini_agent = GeminiAgent(api_key)
-            self.gemini_agent.test_connection()
+            if self.gemini_agent:
+                # Update existing agent
+                self.gemini_agent = UnifiedAIAgent(
+                    gemini_api_key=api_key,
+                    openai_api_key=getattr(self.gemini_agent, 'openai_api_key', None)
+                )
+            else:
+                # Create new agent
+                self.gemini_agent = UnifiedAIAgent(gemini_api_key=api_key)
+            
+            connection_results = self.gemini_agent.test_connection()
+            self._integrate_ai_with_agents()
             return True
         except Exception as e:
-            print(f"❌ Failed to set API key: {e}")
+            print(f"❌ Failed to set Gemini API key: {e}")
             return False
     
-    def set_crewai_keys(self, gemini_api_key: str, serper_api_key: str = None):
-        """Set CrewAI API keys for real news collection"""
+    def set_openai_api_key(self, api_key: str):
+        """Set or update OpenAI API key"""
         try:
-            # Update Gemini agent
-            if gemini_api_key:
-                self.set_gemini_api_key(gemini_api_key)
+            if self.gemini_agent:
+                # Update existing agent
+                self.gemini_agent = UnifiedAIAgent(
+                    gemini_api_key=getattr(self.gemini_agent, 'gemini_api_key', None),
+                    openai_api_key=api_key
+                )
+            else:
+                # Create new agent
+                self.gemini_agent = UnifiedAIAgent(openai_api_key=api_key)
+            
+            connection_results = self.gemini_agent.test_connection()
+            self._integrate_ai_with_agents()
+            return True
+        except Exception as e:
+            print(f"❌ Failed to set OpenAI API key: {e}")
+            return False
+    
+    def set_crewai_keys(self, gemini_api_key: str, serper_api_key: str = None, openai_api_key: str = None):
+        """Set CrewAI API keys for real news collection with multiple AI models"""
+        try:
+            # Update AI agents
+            if gemini_api_key or openai_api_key:
+                if self.gemini_agent:
+                    # Update existing agent with new keys
+                    current_gemini = getattr(self.gemini_agent, 'gemini_api_key', None)
+                    current_openai = getattr(self.gemini_agent, 'openai_api_key', None)
+                    
+                    self.gemini_agent = UnifiedAIAgent(
+                        gemini_api_key=gemini_api_key or current_gemini,
+                        openai_api_key=openai_api_key or current_openai
+                    )
+                else:
+                    # Create new agent
+                    self.gemini_agent = UnifiedAIAgent(
+                        gemini_api_key=gemini_api_key,
+                        openai_api_key=openai_api_key
+                    )
+                
+                connection_results = self.gemini_agent.test_connection()
+                active_models = [model for model, status in connection_results.items() if status]
+                print(f"✅ AI Models updated: {', '.join(active_models)}")
+                self._integrate_ai_with_agents()
             
             # Update VN API CrewAI integration
             success = self.vn_api.set_crewai_keys(gemini_api_key, serper_api_key)

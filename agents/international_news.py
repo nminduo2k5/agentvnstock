@@ -12,14 +12,22 @@ class InternationalMarketNews:
         self.headers = {
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
         }
+        self.ai_agent = None  # Will be set by main_agent
+    
+    def set_ai_agent(self, ai_agent):
+        """Set AI agent for enhanced international news analysis"""
+        self.ai_agent = ai_agent
     
     def get_international_news(self):
-        """Lấy tin tức thị trường quốc tế"""
+        """Lấy tin tức thị trường quốc tế với AI analysis"""
         try:
+            # Get base international news first
+            base_news = None
+            
             # Try CafeF first
             cafef_news = self._crawl_cafef_news()
             if cafef_news:
-                return {
+                base_news = {
                     "category": "International Market",
                     "news_count": len(cafef_news),
                     "news": cafef_news,
@@ -27,7 +35,19 @@ class InternationalMarketNews:
                 }
             else:
                 # Fallback to mock international news
-                return self._get_international_mock_news()
+                base_news = self._get_international_mock_news()
+            
+            # Enhance with AI analysis if available
+            if base_news and self.ai_agent:
+                try:
+                    ai_enhancement = self._get_ai_international_analysis(base_news)
+                    base_news.update(ai_enhancement)
+                except Exception as e:
+                    print(f"⚠️ AI international analysis failed: {e}")
+                    base_news['ai_enhanced'] = False
+                    base_news['ai_error'] = str(e)
+            
+            return base_news
 
         except Exception as e:
             print(f"❌ Error crawling CafeF: {e}")
@@ -159,5 +179,92 @@ class InternationalMarketNews:
             "category": "International Market",
             "news_count": len(news_items),
             "news": news_items,
-            "source": "Mock VN News"
+            "source": "Mock International News"
         }
+    
+    def _get_ai_international_analysis(self, base_news: dict):
+        """Get AI-enhanced international market analysis"""
+        try:
+            # Prepare international news context for AI analysis
+            news_titles = []
+            for news_item in base_news.get('news', []):
+                news_titles.append(f"- {news_item.get('title', '')}")
+            
+            news_context = "\n".join(news_titles[:8])  # Limit to top 8 news
+            
+            context = f"""
+Phân tích thị trường tài chính quốc tế dựa trên tin tức mới nhất:
+
+THÔNG TIN THỊ TRƯỜNG QUỐC TẾ:
+- Danh mục: {base_news.get('category', 'N/A')}
+- Số lượng tin: {base_news.get('news_count', 0)}
+- Nguồn: {base_news.get('source', 'N/A')}
+
+TIN TỨC QUỐC TẾ:
+{news_context}
+
+Hãy đưa ra phân tích chuyên sâu về:
+1. Xu hướng thị trường tài chính toàn cầu
+2. Tác động đến thị trường chứng khoán Việt Nam
+3. Các yếu tố địa chính trị và kinh tế quan trọng
+4. Dự báo cho các thị trường chính (Mỹ, châu Âu, châu Á)
+5. Khuyến nghị đầu tư trong bối cảnh quốc tế
+
+Trả lời ngắn gọn, tập trung vào những điểm quan trọng nhất.
+"""
+            
+            # Get AI analysis
+            ai_result = self.ai_agent.generate_with_fallback(context, 'international_analysis', max_tokens=600)
+            
+            if ai_result['success']:
+                return {
+                    'ai_international_analysis': ai_result['response'],
+                    'ai_model_used': ai_result['model_used'],
+                    'ai_enhanced': True,
+                    'global_sentiment': self._extract_global_sentiment(ai_result['response']),
+                    'vn_impact': self._extract_vn_impact(ai_result['response'])
+                }
+            else:
+                return {'ai_enhanced': False, 'ai_error': ai_result.get('error', 'AI not available')}
+                
+        except Exception as e:
+            return {'ai_enhanced': False, 'ai_error': str(e)}
+    
+    def _extract_global_sentiment(self, ai_response: str):
+        """Extract global market sentiment from AI response"""
+        try:
+            ai_lower = ai_response.lower()
+            
+            # Global sentiment indicators
+            positive_indicators = ['tích cực', 'positive', 'tăng trưởng', 'phục hồi', 'ổn định']
+            negative_indicators = ['tiêu cực', 'negative', 'suy thoái', 'lo ngại', 'bất ổn']
+            
+            positive_count = sum(1 for indicator in positive_indicators if indicator in ai_lower)
+            negative_count = sum(1 for indicator in negative_indicators if indicator in ai_lower)
+            
+            if positive_count > negative_count:
+                return 'POSITIVE'
+            elif negative_count > positive_count:
+                return 'NEGATIVE'
+            else:
+                return 'NEUTRAL'
+                
+        except Exception:
+            return 'NEUTRAL'
+    
+    def _extract_vn_impact(self, ai_response: str):
+        """Extract impact on Vietnam market from AI response"""
+        try:
+            ai_lower = ai_response.lower()
+            
+            if any(phrase in ai_lower for phrase in ['tác động tích cực', 'positive impact', 'có lợi']):
+                return 'POSITIVE_IMPACT'
+            elif any(phrase in ai_lower for phrase in ['tác động tiêu cực', 'negative impact', 'bất lợi']):
+                return 'NEGATIVE_IMPACT'
+            elif any(phrase in ai_lower for phrase in ['ít tác động', 'limited impact', 'không đáng kể']):
+                return 'LIMITED_IMPACT'
+            else:
+                return 'MODERATE_IMPACT'
+                
+        except Exception:
+            return 'MODERATE_IMPACT'

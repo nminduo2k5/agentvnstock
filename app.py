@@ -9,7 +9,7 @@ from src.data.vn_stock_api import VNStockAPI
 from src.ui.styles import load_custom_css
 import json
 
-# Professional page configuration
+# Cấu hình trang chuyên nghiệp
 st.set_page_config(
     page_title="DUONG AI TRADING PRO",
     page_icon="📈",
@@ -17,10 +17,10 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# Load Bootstrap-integrated CSS
+# Tải CSS tích hợp Bootstrap
 load_custom_css()
 
-# Additional app-specific CSS
+# CSS bổ sung cho ứng dụng
 st.markdown("""
 <style>
     /* App-specific overrides */
@@ -80,7 +80,7 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-# Initialize system
+# Khởi tạo hệ thống
 @st.cache_resource
 def init_system():
     vn_api = VNStockAPI()
@@ -88,7 +88,7 @@ def init_system():
     return main_agent, vn_api
 
 main_agent, vn_api = init_system()
-# Analysis display functions
+# Các hàm hiển thị phân tích
 async def display_comprehensive_analysis(result, symbol, time_horizon="Trung hạn", risk_tolerance=50):
     """Display comprehensive analysis with real stock info"""
     # Get detailed stock info from main_agent
@@ -129,9 +129,9 @@ async def display_comprehensive_analysis(result, symbol, time_horizon="Trung h�
     elif risk_tolerance <= 70:
         st.info("🟡 **Chiến lược cân bằng:** Kết hợp tăng trưởng và ổn định")
     else:
-        st.info("🔴 **Chiến lược tích cực:** Tập trung vào tăng trưởng cao")
+        st.info("🔴 **Chiến lược mạo hiểm:** Tập trung vào tăng trưởng cao")
     
-    col1, col2 = st.columns(2)
+    col1, col2, col3 = st.columns(3)
     
     with col1:
         if result.get('price_prediction'):
@@ -142,57 +142,44 @@ async def display_comprehensive_analysis(result, symbol, time_horizon="Trung h�
     with col2:
         if result.get('risk_assessment'):
             display_risk_assessment(result['risk_assessment'])
+            
+    with col3:
+        if result.get('investment_expert'):
+            display_investment_analysis(result['investment_expert'])
 
 def display_price_prediction(pred):
     if pred.get('error'):
         st.error(f"❌ {pred['error']}")
         return
     
-    import pandas as pd
-    import numpy as np
-    from datetime import datetime, timedelta
-    
-    # Use real prediction data from enhanced price_predictor
+    # Extract ALL data from price_predictor agent - NO calculations here
     current_price = pred.get('current_price', 0)
     predicted_price = pred.get('predicted_price', 0)
     trend = pred.get('trend', 'neutral')
     confidence = pred.get('confidence', 50)
     data_source = pred.get('data_source', 'Unknown')
-    
-    # Calculate change percentage
     change_percent = pred.get('change_percent', 0)
     
-    # Extract additional data if available or use reasonable estimates
-    if 'technical_indicators' in pred:
-        tech_indicators = pred['technical_indicators']
-        rsi = tech_indicators.get('rsi', 50)
-        macd = tech_indicators.get('macd', 0)
-    else:
-        rsi = 50
-        macd = 0
+    # Technical indicators from agent
+    tech_indicators = pred.get('technical_indicators', {})
+    rsi = tech_indicators.get('rsi', 50)
+    macd = tech_indicators.get('macd', 0)
     
-    # Extract support/resistance if available
-    if 'trend_analysis' in pred:
-        trend_analysis = pred['trend_analysis']
-        support = trend_analysis.get('support_level', current_price * 0.9)
-        resistance = trend_analysis.get('resistance_level', current_price * 1.1)
-    else:
-        support = current_price * 0.9
-        resistance = current_price * 1.1
+    # Support/resistance from agent
+    trend_analysis = pred.get('trend_analysis', {})
+    support = trend_analysis.get('support_level', current_price)
+    resistance = trend_analysis.get('resistance_level', current_price)
     
-    # Extract multi-timeframe predictions if available
-    if 'predictions' in pred:
-        predictions = pred['predictions']
-        target_1d = predictions.get('short_term', {}).get('1_day', {}).get('price', current_price * 1.01)
-        target_1w = predictions.get('short_term', {}).get('7_days', {}).get('price', current_price * 1.02)
-        target_1m = predictions.get('medium_term', {}).get('30_days', {}).get('price', current_price * 1.05)
-        target_3m = predictions.get('medium_term', {}).get('60_days', {}).get('price', current_price * 1.1)
-    else:
-        # Use predicted_price as fallback
-        target_1d = current_price * 1.01
-        target_1w = current_price * 1.02
-        target_1m = current_price * 1.05
-        target_3m = predicted_price
+    # Multi-timeframe predictions from agent (exact keys from price_predictor)
+    predictions = pred.get('predictions', {})
+    target_1d = predictions.get('short_term', {}).get('1_days', {}).get('price', predicted_price)
+    target_1w = predictions.get('short_term', {}).get('7_days', {}).get('price', predicted_price) 
+    target_1m = predictions.get('medium_term', {}).get('30_days', {}).get('price', predicted_price)
+    target_3m = predictions.get('medium_term', {}).get('60_days', {}).get('price', predicted_price)
+    
+    # If no multi-timeframe data, use single predicted_price
+    if not predictions:
+        target_1d = target_1w = target_1m = target_3m = predicted_price
     
     colors = {'bullish': '#28a745', 'bearish': '#dc3545', 'neutral': '#ffc107'}
     icons = {'bullish': '📈', 'bearish': '📉', 'neutral': '📊'}
@@ -227,32 +214,53 @@ def display_price_prediction(pred):
         st.metric("Mục tiêu 1 ngày", f"{target_1d:,.2f}")
         st.metric("RSI", f"{rsi:.2f}")
    
-    # Show data source
+    # Show data source and AI model
     if 'StockInfo_Real' in data_source:
         st.success("✅ Dự đoán sử dụng dữ liệu thật từ CrewAI + CafeF + Vnstock")
     elif 'VCI_Real' in data_source:
         st.info("ℹ️ Dự đoán sử dụng dữ liệu thật từ CrewAI + CafeF + Vnstock")
+    
+    # Show AI enhancement info if available
+    if pred.get('ai_enhanced'):
+        ai_model = pred.get('ai_model_used', 'Unknown')
+        st.success(f"🤖 Phân tích được tăng cường bởi AI: {ai_model}")
+        if pred.get('ai_analysis'):
+            with st.expander("🧠 Phân tích AI chi tiết"):
+                st.write(pred['ai_analysis'])
+    elif pred.get('ai_error'):
+        st.warning(f"⚠️ AI không khả dụng: {pred.get('ai_error')}")
+    
+    # Show comprehensive prediction data if available
+    if 'predictions' in pred and pred['predictions']:
+        with st.expander("📈 Dự đoán đa khung thời gian"):
+            predictions = pred['predictions']
+            for timeframe, data in predictions.items():
+                st.subheader(f"{timeframe.replace('_', ' ').title()}")
+                cols = st.columns(len(data))
+                for i, (period, values) in enumerate(data.items()):
+                    with cols[i]:
+                        st.metric(
+                            f"{period.replace('_', ' ')}",
+                            f"{values.get('price', 0):,.0f}",
+                            f"{values.get('change_percent', 0):+.1f}%"
+                        )
 
 def display_risk_assessment(risk):
     if risk.get('error'):
         st.error(f"❌ {risk['error']}")
         return
     
-    import random
-    import pandas as pd
+    # Extract ALL data from risk_expert agent - NO calculations here
+    risk_level = risk.get('risk_level', 'MEDIUM')
+    volatility = risk.get('volatility', 25.0)
+    beta = risk.get('beta', 1.0)
+    max_drawdown = risk.get('max_drawdown', -15.0)
+    risk_score = risk.get('risk_score', 5)
     
-    # Generate detailed risk data
-    risk_level = random.choice(['LOW', 'MEDIUM', 'HIGH'])
-    risk_data = {
-        'risk_level': risk_level,
-        'volatility': random.uniform(15, 45),
-        'beta': random.uniform(0.5, 1.8),
-        'var_95': random.uniform(3, 12),
-        'sharpe_ratio': random.uniform(0.5, 2.5),
-        'max_drawdown': random.uniform(8, 25),
-        'correlation_market': random.uniform(0.3, 0.9),
-        'risk_score': random.randint(1, 10)
-    }
+    # Additional metrics from agent (if available)
+    var_95 = risk.get('var_95', abs(max_drawdown) if max_drawdown else 8.0)
+    sharpe_ratio = risk.get('sharpe_ratio', 1.0)
+    correlation_market = risk.get('correlation_market', beta * 0.8 if beta else 0.7)
     
     colors = {'LOW': '#28a745', 'MEDIUM': '#ffc107', 'HIGH': '#dc3545'}
     icons = {'LOW': '✅', 'MEDIUM': '⚡', 'HIGH': '🚨'}
@@ -262,24 +270,43 @@ def display_risk_assessment(risk):
         <div style="text-align: center;">
             <div style="font-size: 2.5em; margin-bottom: 10px;">{icons.get(risk_level, '❓')}</div>
             <h3 style="margin: 0; font-size: 24px;">ĐÁNH GIÁ RỦI RO</h3>
-            <h2 style="margin: 10px 0; font-size: 28px;">{risk_level} RISK</h2>
-            <p style="margin: 5px 0; font-size: 18px; opacity: 0.9;">Biến động: {risk_data['volatility']:.2f}%</p>
-            <p style="margin: 5px 0; font-size: 14px; opacity: 0.8;">Beta: {risk_data['beta']:.3f}</p>
+            <h2 style="margin: 10px 0; font-size: 28px;">RỦI RO {risk_level}</h2>
+            <p style="margin: 5px 0; font-size: 18px; opacity: 0.9;">Biến động: {volatility:.2f}%</p>
+            <p style="margin: 5px 0; font-size: 14px; opacity: 0.8;">Beta: {beta:.3f}</p>
         </div>
     </div>
     """, unsafe_allow_html=True)
     
-    # Detailed risk metrics
+    # Detailed risk metrics using REAL data
     col1, col2, col3 = st.columns(3)
     with col1:
-        st.metric("VaR 95%", f"{risk_data['var_95']:.2f}%")
-        st.metric("Sharpe Ratio", f"{risk_data['sharpe_ratio']:.3f}")
+        st.metric("VaR 95%", f"{var_95:.2f}%")
+        st.metric("Sharpe Ratio", f"{sharpe_ratio:.3f}")
     with col2:
-        st.metric("Max Drawdown", f"{risk_data['max_drawdown']:.2f}%")
-        st.metric("Tương quan TT", f"{risk_data['correlation_market']:.3f}")
+        st.metric("Max Drawdown", f"{max_drawdown:.2f}%")
+        st.metric("Tương quan TT", f"{correlation_market:.3f}")
     with col3:
-        st.metric("Điểm rủi ro", f"{risk_data['risk_score']}/10")
+        st.metric("Điểm rủi ro", f"{risk_score}/10")
         st.metric("Phân loại", risk_level)
+    
+    # Show AI enhancement info if available
+    if risk.get('ai_enhanced'):
+        ai_model = risk.get('ai_model_used', 'Unknown')
+        st.success(f"🤖 Phân tích rủi ro được tăng cường bởi AI: {ai_model}")
+        if risk.get('ai_risk_analysis'):
+            with st.expander("🧠 Phân tích rủi ro AI chi tiết"):
+                st.write(risk['ai_risk_analysis'])
+    elif risk.get('ai_error'):
+        st.warning(f"⚠️ AI không khả dụng: {risk.get('ai_error')}")
+    
+    # Show data source info
+    data_source = risk.get('data_source', 'Unknown')
+    if 'VCI_Real' in data_source:
+        st.info("ℹ️ Dữ liệu thật từ VNStock VCI")
+    elif 'Yahoo_Finance' in data_source:
+        st.info("ℹ️ Dữ liệu từ Yahoo Finance")
+    elif 'Fallback' in data_source:
+        st.warning("⚠️ Sử dụng dữ liệu dự phòng - Không phù hợp cho giao dịch thực tế")
     
 
 
@@ -288,21 +315,35 @@ def display_investment_analysis(inv):
         st.error(f"❌ {inv['error']}")
         return
     
-    import random
-    import pandas as pd
+    # Extract ALL data from investment_expert agent - NO calculations here
+    recommendation = inv.get('recommendation', 'HOLD')
+    reason = inv.get('reason', 'Phân tích từ investment expert')
+    current_price = inv.get('current_price', 50000)
+    target_price = inv.get('target_price', current_price)
+    pe_ratio = inv.get('pe_ratio', 15.0)
+    pb_ratio = inv.get('pb_ratio', 1.5)
+    roe = inv.get('roe', 15.0)
+    dividend_yield = inv.get('dividend_yield', 3.0)
+    market_cap = inv.get('market_cap', 'N/A')
+    year_high = inv.get('year_high', current_price)
+    year_low = inv.get('year_low', current_price)
     
-    # Generate detailed investment data
-    recommendation = random.choice(['BUY', 'SELL', 'HOLD'])
+    # Calculate upside potential from agent data
+    upside_potential = ((target_price - current_price) / current_price * 100) if current_price > 0 else 0
+    
     inv_data = {
         'recommendation': recommendation,
-        'target_price': random.randint(25000, 180000),
-        'upside_potential': random.uniform(-15, 35),
-        'fair_value': random.randint(20000, 160000),
-        'dividend_yield': random.uniform(0, 8),
-        'roe': random.uniform(8, 25),
-        'debt_ratio': random.uniform(0.2, 0.8),
-        'growth_rate': random.uniform(-5, 20),
-        'score': random.randint(1, 10)
+        'reason': reason,
+        'target_price': target_price,
+        'upside_potential': upside_potential,
+        'current_price': current_price,
+        'dividend_yield': dividend_yield,
+        'roe': roe,
+        'pe_ratio': pe_ratio,
+        'pb_ratio': pb_ratio,
+        'market_cap': market_cap,
+        'year_high': year_high,
+        'year_low': year_low
     }
     
     colors = {'BUY': '#28a745', 'SELL': '#dc3545', 'HOLD': '#ffc107'}
@@ -320,22 +361,52 @@ def display_investment_analysis(inv):
             <div style="font-size: 2.5em; margin-bottom: 10px;">{icons.get(recommendation, '❓')}</div>
             <h3 style="margin: 0; font-size: 24px;">KHUYẾN NGHỊ ĐẦU TƯ</h3>
             <h2 style="margin: 10px 0; font-size: 28px;">{recommendation}</h2>
-            <p style="margin: 10px 0; font-size: 16px; opacity: 0.9;">{reasons[recommendation]}</p>
+            <p style="margin: 10px 0; font-size: 16px; opacity: 0.9;">{inv_data['reason']}</p>
         </div>
     </div>
     """, unsafe_allow_html=True)
     
-    # Detailed investment metrics
-    col1, col2, col3 = st.columns(3)
+    # Display metrics from investment_expert agent
+    col1, col2, col3, col4 = st.columns(4)
     with col1:
-        st.metric("Giá mục tiêu", f"{inv_data['target_price']:,.2f}")
-        st.metric("Tiềm năng tăng", f"{inv_data['upside_potential']:+.2f}%")
+        st.metric("Giá mục tiêu", f"{inv_data['target_price']:,.0f}")
+        st.metric("P/E Ratio", f"{inv_data['pe_ratio']:.1f}")
     with col2:
-        st.metric("Giá trị hợp lý", f"{inv_data['fair_value']:,.2f}")
-        st.metric("Tỷ suất cổ tức", f"{inv_data['dividend_yield']:.2f}%")
+        st.metric("Tiềm năng tăng", f"{inv_data['upside_potential']:+.1f}%")
+        st.metric("P/B Ratio", f"{inv_data['pb_ratio']:.2f}")
     with col3:
-        st.metric("ROE", f"{inv_data['roe']:.2f}%")
-        st.metric("Điểm đầu tư", f"{inv_data['score']}/10")
+        st.metric("Vốn hóa", inv_data['market_cap'])
+        st.metric("ROE", f"{inv_data['roe']:.1f}%")
+    with col4:
+        st.metric("Tỷ suất cổ tức", f"{inv_data['dividend_yield']:.1f}%")
+        st.metric("Cao/Thấp 1 năm", f"{inv_data['year_high']:,.0f}/{inv_data['year_low']:,.0f}")
+    
+    # Show AI enhancement info if available
+    if inv.get('ai_enhanced'):
+        ai_model = inv.get('ai_model_used', 'Unknown')
+        st.success(f"🤖 Phân tích đầu tư được tăng cường bởi AI: {ai_model}")
+        if inv.get('ai_investment_analysis'):
+            with st.expander("🧠 Phân tích đầu tư AI chi tiết"):
+                st.write(inv['ai_investment_analysis'])
+        if inv.get('enhanced_recommendation'):
+            enhanced_rec = inv['enhanced_recommendation']
+            if enhanced_rec != recommendation:
+                st.info(f"🎯 Khuyến nghị AI nâng cao: {enhanced_rec}")
+    elif inv.get('ai_error'):
+        st.warning(f"⚠️ AI không khả dụng: {inv.get('ai_error')}")
+    
+    # Show data source and market info
+    market = inv.get('market', 'Unknown')
+    data_source = inv.get('data_source', 'Unknown')
+    if market == 'Vietnam':
+        if 'VN_API_Real' in data_source:
+            st.success("✅ Dữ liệu thật từ VN Stock API")
+        elif 'VNStock_Real' in data_source:
+            st.info("ℹ️ Dữ liệu từ VNStock")
+        else:
+            st.warning("⚠️ Dữ liệu dự phòng cho thị trường Việt Nam")
+    else:
+        st.info(f"🌍 Thị trường: {market}")
     
   
 # Bootstrap Enhanced Header
@@ -353,13 +424,16 @@ st.markdown("""
                         <i class="bi bi-graph-up"></i> 6 AI Agents
                     </span>
                     <span class="badge bg-light bg-opacity-25 text-white px-3 py-2">
-                        <i class="bi bi-robot"></i> Gemini AI
+                        <i class="bi bi-robot"></i> Multi-AI (Gemini + ChatGPT)
                     </span>
                     <span class="badge bg-light bg-opacity-25 text-white px-3 py-2">
-                        <i class="bi bi-newspaper"></i> Real-time News
+                        <i class="bi bi-newspaper"></i> CrewAI Multi-Source News
                     </span>
                     <span class="badge bg-light bg-opacity-25 text-white px-3 py-2">
-                        <i class="bi bi-lightning"></i> Live Data
+                        <i class="bi bi-lightning"></i> Dữ liệu trực tiếp
+                    </span>
+                    <span class="badge bg-light bg-opacity-25 text-white px-3 py-2">
+                        <i class="bi bi-cpu"></i> Auto AI Selection
                     </span>
                 </div>
             </div>
@@ -378,85 +452,109 @@ with st.sidebar:
     """, unsafe_allow_html=True)
     
     # API Configuration
-    st.subheader("🔑 API Configuration")
+    st.subheader("🔑 Cấu hình API")
     
     gemini_key = st.text_input(
-        "Gemini API Key",
+        "Khóa API Gemini",
         type="password",
         placeholder="Nhập Google Gemini API key...",
         help="Lấy API key tại: https://aistudio.google.com/apikey"
     )
     
     serper_key = st.text_input(
-        "Serper API Key (Optional)",
+        "Khóa API Serper (Tùy chọn)",
         type="password", 
         placeholder="Nhập Serper API key...",
         help="Lấy API key tại: https://serper.dev/api-key"
     )
     
-    col1, col2 = st.columns(2)
+    openai_key = st.text_input(
+        "Khóa API OpenAI (Tùy chọn)",
+        type="password",
+        placeholder="Nhập OpenAI API key...",
+        help="Lấy API key tại: https://platform.openai.com/api-keys"
+    )
+    
+    col1, col2, col3 = st.columns(3)
     with col1:
-        if st.button("🔧 Setup Gemini", use_container_width=True, type="primary"):
+        if st.button("🔧 Cài đặt Gemini", use_container_width=True, type="primary"):
             if gemini_key:
                 if main_agent.set_gemini_api_key(gemini_key):
-                    st.success('✅ Gemini configured successfully!')
+                    st.success('✅ Cấu hình Gemini thành công!')
                     st.rerun()
                 else:
-                    st.error('❌ Invalid API key!')
+                    st.error('❌ Khóa API không hợp lệ!')
             else:
-                st.warning('⚠️ Please enter API key!')
+                st.warning('⚠️ Vui lòng nhập khóa API!')
     
     with col2:
-        if st.button("🤖 Setup CrewAI", use_container_width=True):
-            if gemini_key:
-                if main_agent.set_crewai_keys(gemini_key, serper_key):
-                    st.success('✅ CrewAI configured successfully!')
+        if st.button("🤖 Cài đặt OpenAI", use_container_width=True):
+            if openai_key:
+                if main_agent.set_openai_api_key(openai_key):
+                    st.success('✅ Cấu hình OpenAI thành công!')
                     st.rerun()
                 else:
-                    st.warning('⚠️ CrewAI unavailable')
+                    st.error('❌ Khóa API không hợp lệ!')
             else:
-                st.error('❌ Need Gemini API key!')
+                st.warning('⚠️ Vui lòng nhập khóa API OpenAI!')
+    
+    with col3:
+        if st.button("🚀 Cài đặt tất cả", use_container_width=True):
+            if gemini_key or openai_key:
+                if main_agent.set_crewai_keys(gemini_key, serper_key, openai_key):
+                    st.success('✅ Cấu hình tất cả AI thành công!')
+                    st.rerun()
+                else:
+                    st.warning('⚠️ Một số AI không khả dụng')
+            else:
+                st.error('❌ Cần ít nhất một khóa API!')
     
     st.divider()
     
     # Bootstrap AI Agents Status
+    ai_models_status = []
+    if main_agent.gemini_agent:
+        if hasattr(main_agent.gemini_agent, 'available_models'):
+            for model_name in main_agent.gemini_agent.available_models.keys():
+                ai_models_status.append(f"{model_name.upper()}")
+    
     agents_status = [
         {"name": "PricePredictor", "icon": "bi-graph-up", "status": "active"},
         {"name": "TickerNews", "icon": "bi-newspaper", "status": "active"},
         {"name": "MarketNews", "icon": "bi-globe", "status": "active"},
         {"name": "InvestmentExpert", "icon": "bi-briefcase", "status": "active"},
         {"name": "RiskExpert", "icon": "bi-shield-check", "status": "active"},
-        {"name": "GeminiAgent", "icon": "bi-robot", "status": "active" if main_agent.gemini_agent else "inactive"},
+        {"name": f"AI Models ({', '.join(ai_models_status) if ai_models_status else 'None'})", "icon": "bi-robot", "status": "active" if main_agent.gemini_agent else "inactive"},
         {"name": "CrewAI", "icon": "bi-people", "status": "active" if main_agent.vn_api.crewai_collector and main_agent.vn_api.crewai_collector.enabled else "inactive"}
     ]
     
-    st.subheader("🤖 AI Agents Status")
+    st.subheader("🤖 Trạng thái AI Agents")
     
     for agent in agents_status:
         status_icon = "🟢" if agent["status"] == "active" else "🔴"
-        st.write(f"{status_icon} **{agent['name']}**: {'Active' if agent['status'] == 'active' else 'Inactive'}")
+        st.write(f"{status_icon} **{agent['name']}**: {'Hoạt động' if agent['status'] == 'active' else 'Không hoạt động'}")
     
     st.divider()
     
     # Investment Settings
-    st.subheader("📊 Investment Settings")
+    st.subheader("📊 Cài đặt đầu tư")
     
     time_horizon = st.selectbox(
-        "🕐 Investment Horizon",
+        "🕐 Thời gian đầu tư",
         ["Ngắn hạn (1-3 tháng)", "Trung hạn (3-12 tháng)", "Dài hạn (1+ năm)"],
         index=1
     )
     
     risk_tolerance = st.slider(
-        "⚠️ Risk Tolerance",
+        "⚠️ Khả năng chấp nhận rủi ro",
         min_value=0,
         max_value=100,
         value=50,
-        help="0: Conservative | 50: Balanced | 100: Aggressive"
+        help="0: Thận trọng | 50: Cân bằng | 100: Rủi ro"
     )
     
     investment_amount = st.number_input(
-        "💰 Investment Amount (VND)",
+        "💰 Số tiền đầu tư (VND)",
         min_value=1_000_000,
         max_value=10_000_000_000,
         value=100_000_000,
@@ -466,34 +564,43 @@ with st.sidebar:
     
     # Risk Profile Display
     if risk_tolerance <= 30:
-        risk_label = "🟢 Conservative"
+        risk_label = "🟢 Thận trọng"
     elif risk_tolerance <= 70:
-        risk_label = "🟡 Balanced"
+        risk_label = "🟡 Cân bằng"
     else:
-        risk_label = "🔴 Aggressive"
+        risk_label = "🔴 Mạo hiểm"
     
-    st.info(f"**Profile:** {risk_label} ({risk_tolerance}%) | **Amount:** {investment_amount:,} VND")
+    st.info(f"**Hồ sơ:** {risk_label} ({risk_tolerance}%) | **Số tiền:** {investment_amount:,} VND")
     
     st.divider()
     
     # Stock Selection
-    st.subheader("📈 Stock Selection")
+    st.subheader("📈 Chọn cổ phiếu")
     
-    # Load symbols
-    with st.spinner("Loading symbols..."):
+    # Load symbols with CrewAI priority
+    with st.spinner("Đang tải danh sách mã cổ phiếu..."):
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
+        
+        # Get symbols from VN API (which handles CrewAI internally)
         symbols = loop.run_until_complete(vn_api.get_available_symbols())
+        
+        # Check data source from symbols metadata
+        data_source = 'Static'  # Default
+        if symbols and len(symbols) > 0:
+            first_symbol = symbols[0]
+            if first_symbol.get('data_source') == 'CrewAI':
+                data_source = 'CrewAI'
+                st.success(f'✅ {len(symbols)} mã cổ phiếu từ CrewAI (Real Data)')
+            else:
+                data_source = 'Static'
+                st.info(f'📋 {len(symbols)} mã cổ phiếu tĩnh (Fallback)')
+        else:
+            st.error("❌ Không thể tải danh sách cổ phiếu")
+        
         loop.close()
     
-    # Data Source Display
-    data_source = symbols[0].get('data_source', 'Static') if symbols else 'Static'
-    if data_source == 'CrewAI':
-        st.success(f'✅ {len(symbols)} symbols from CrewAI')
-    else:
-        st.info(f'📋 {len(symbols)} static symbols')
-    
-    # Group symbols by sector
+    # Group symbols by sector with enhanced display
     sectors = {}
     for stock in symbols:
         sector = stock.get('sector', 'Other')
@@ -501,21 +608,29 @@ with st.sidebar:
             sectors[sector] = []
         sectors[sector].append(stock)
     
-    selected_sector = st.selectbox("Select Sector", list(sectors.keys()))
+    # Show data source status
+    if data_source == 'CrewAI':
+        st.markdown("🤖 **Nguồn dữ liệu**: CrewAI Real-time Data")
+    else:
+        st.markdown("📋 **Nguồn dữ liệu**: Static Fallback Data")
+        if main_agent.gemini_agent:
+            st.info("💡 **Tip**: Cấu hình CrewAI API keys để lấy dữ liệu thật")
+    
+    selected_sector = st.selectbox("Chọn ngành", list(sectors.keys()))
     sector_stocks = sectors[selected_sector]
     
     stock_options = [f"{s['symbol']} - {s['name']}" for s in sector_stocks]
-    selected_stock = st.selectbox("Select Stock", stock_options)
+    selected_stock = st.selectbox("Chọn cổ phiếu", stock_options)
     symbol = selected_stock.split(" - ")[0] if selected_stock else ""
 
 # Main Content Tabs
 tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
-    "📊 Stock Analysis",
+    "📊 Phân tích cổ phiếu",
     "💬 AI Chatbot", 
-    "📈 VN Market",
-    "📰 Stock News",
-    "🏢 Company Info",
-    "🌍 Market News"
+    "📈 Thị trường VN",
+    "📰 Tin tức cổ phiếu",
+    "🏢 Thông tin công ty",
+    "🌍 Tin tức thị trường"
 ])
 
 # Helper functions for professional displays
@@ -549,12 +664,12 @@ def show_loading(message):
     <div class="loading-container">
         <div class="loading-spinner"></div>
         <div style="font-size: 1.2rem; font-weight: 600;">{message}</div>
-        <div style="opacity: 0.8; margin-top: 0.5rem;">AI Agents are working...</div>
+        <div style="opacity: 0.8; margin-top: 0.5rem;">AI Agents đang làm việc...</div>
     </div>
     """
 
 def create_news_card(title, summary, published, source, link=None):
-    link_html = f'<a href="{link}" target="_blank" style="color: #2a5298; text-decoration: none;">🔗 Read more</a>' if link else ""
+    link_html = f'<a href="{link}" target="_blank" style="color: #2a5298; text-decoration: none;">🔗 Đọc thêm</a>' if link else ""
     
     return f"""
     <div class="news-card">
@@ -567,7 +682,7 @@ def create_news_card(title, summary, published, source, link=None):
 
 # Tab 1: Stock Analysis
 with tab1:
-    st.markdown(f"<h2 style='margin-bottom:0.5em;'>📈 Full analysis <span style='color:#667eea'>{symbol}</span></h2>", unsafe_allow_html=True)
+    st.markdown(f"<h2 style='margin-bottom:0.5em;'>📈 Phân tích toàn diện <span style='color:#667eea'>{symbol}</span></h2>", unsafe_allow_html=True)
     
    
     
@@ -575,16 +690,16 @@ with tab1:
     col1, col2, col3, col4 = st.columns(4)
     
     with col1:
-        comprehensive_btn = st.button("🚀 Full Analysis", type="primary", use_container_width=True)
+        comprehensive_btn = st.button("🚀 Phân tích toàn diện", type="primary", use_container_width=True)
     
     with col2:
-        price_btn = st.button("📈 Price Prediction", use_container_width=True)
+        price_btn = st.button("📈 Dự đoán giá", use_container_width=True)
     
     with col3:
-        risk_btn = st.button("⚠️ Risk Assessment", use_container_width=True)
+        risk_btn = st.button("⚠️ Đánh giá rủi ro", use_container_width=True)
     
     with col4:
-        invest_btn = st.button("💼 Investment Expert", use_container_width=True)
+        invest_btn = st.button("💼 Chuyên gia đầu tư", use_container_width=True)
 
     # Results area
     results_container = st.container()
@@ -592,7 +707,7 @@ with tab1:
     # Handle button actions
     if comprehensive_btn:
         with results_container:
-            with st.spinner("🚀 6 AI Agents are analysis..."):
+            with st.spinner("🚀 6 AI Agents đang phân tích..."):
                 loop = asyncio.new_event_loop()
                 asyncio.set_event_loop(loop)
                 result = loop.run_until_complete(main_agent.analyze_stock(symbol))
@@ -601,7 +716,7 @@ with tab1:
                 st.error(f"❌ {result['error']}")
             else:
                 # Display investment settings
-                st.info(f"⚙️ **Configuration:** {time_horizon} | Risk tolerance: {risk_tolerance}% ({risk_label}) | Investment amount: {investment_amount:,} VNĐ")
+                st.info(f"⚙️ **Cấu hình:** {time_horizon} | Khả năng chấp nhận rủi ro: {risk_tolerance}% ({risk_label}) | Số tiền đầu tư: {investment_amount:,} VNĐ")
 
                 # Display comprehensive results with real data
                 loop = asyncio.new_event_loop()
@@ -609,21 +724,21 @@ with tab1:
                 loop.run_until_complete(display_comprehensive_analysis(result, symbol, time_horizon, risk_tolerance))
     elif price_btn:
         with results_container:
-            with st.spinner("📈 Price predicting..."):
+            with st.spinner("📈 Đang dự đoán giá..."):
                 loop = asyncio.new_event_loop()
                 asyncio.set_event_loop(loop)
                 pred = loop.run_until_complete(asyncio.to_thread(main_agent.price_predictor.predict_price, symbol))
             display_price_prediction(pred)
     elif risk_btn:
         with results_container:
-            with st.spinner("⚠️ Risk rating..."):
+            with st.spinner("⚠️ Đang đánh giá rủi ro..."):
                 loop = asyncio.new_event_loop()
                 asyncio.set_event_loop(loop)
                 risk = loop.run_until_complete(asyncio.to_thread(main_agent.risk_expert.assess_risk, symbol))
             display_risk_assessment(risk)
     elif invest_btn:
         with results_container:
-            with st.spinner("💼 Investment analysis..."):
+            with st.spinner("💼 Đang phân tích đầu tư..."):
                 loop = asyncio.new_event_loop()
                 asyncio.set_event_loop(loop)
                 inv = loop.run_until_complete(asyncio.to_thread(main_agent.investment_expert.analyze_stock, symbol))
@@ -631,28 +746,28 @@ with tab1:
 
 # Tab 2: AI Chatbot
 with tab2:
-    st.markdown("## 💬 AI Investment Advisor")
+    st.markdown("## 💬 Cố vấn đầu tư AI")
     
     if not main_agent.gemini_agent:
-        st.warning("⚠️ Please configure Gemini API key in the sidebar")
+        st.warning("⚠️ Vui lòng cấu hình khóa API Gemini trong thanh bên")
     else:
         # Chat interface
         user_question = st.text_input(
-            "Ask the AI advisor:",
-            placeholder="e.g., Should I buy VCB? What's the outlook for HPG?",
+            "Hỏi cố vấn AI:",
+            placeholder="Ví dụ: Tôi có nên mua VCB không? Triển vọng của HPG như thế nào?",
             key="chat_input"
         )
         
-        if st.button("🚀 Ask AI", type="primary", use_container_width=True):
+        if st.button("🚀 Hỏi AI", type="primary", use_container_width=True):
             if user_question:
-                with st.spinner("AI is thinking..."):
+                with st.spinner("AI đang suy nghĩ..."):
                     loop = asyncio.new_event_loop()
                     asyncio.set_event_loop(loop)
                     response = loop.run_until_complete(main_agent.process_query(user_question, symbol))
                     loop.close()
                     
                     if response.get('expert_advice'):
-                        st.markdown("### 🎓 Expert Analysis")
+                        st.markdown("### 🎓 Phân tích chuyên gia")
                         advice_html = response['expert_advice'].replace('\n', '<br>')
                         st.markdown(f"""
                         <div class="analysis-container">
@@ -661,20 +776,20 @@ with tab2:
                         """, unsafe_allow_html=True)
                         
                         if response.get('recommendations'):
-                            st.markdown("### 💡 Specific Actions")
+                            st.markdown("### 💡 Hành động cụ thể")
                             for i, rec in enumerate(response['recommendations'], 1):
                                 st.markdown(f"**{i}.** {rec}")
                     else:
-                        st.error("❌ Failed to get AI response")
+                        st.error("❌ Không thể nhận được phản hồi từ AI")
             else:
-                st.error("❌ Please enter a question")
+                st.error("❌ Vui lòng nhập câu hỏi")
 
 # Tab 3: VN Market
 with tab3:
-    st.markdown("## 📈 Vietnam Stock Market Overview")
+    st.markdown("## 📈 Tổng quan thị trường chứng khoán Việt Nam")
     
-    if st.button("🔄 Refresh Market Data", type="primary"):
-        with st.spinner("Loading market data..."):
+    if st.button("🔄 Cập nhật dữ liệu thị trường", type="primary"):
+        with st.spinner("Đang tải dữ liệu thị trường..."):
             loop = asyncio.new_event_loop()
             asyncio.set_event_loop(loop)
             market_data = loop.run_until_complete(vn_api.get_market_overview())
@@ -724,7 +839,7 @@ with tab3:
                 
                 with col1:
                     if market_data.get('top_gainers'):
-                        st.markdown("### 🚀 Top Gainers")
+                        st.markdown("### 🚀 Top tăng giá")
                         for stock in market_data['top_gainers'][:5]:
                             st.markdown(f"""
                             <div style="background: #28a74522; padding: 1rem; border-radius: 8px; margin: 0.5rem 0; border-left: 4px solid #28a745;">
@@ -734,7 +849,7 @@ with tab3:
                 
                 with col2:
                     if market_data.get('top_losers'):
-                        st.markdown("### 📉 Top Losers")
+                        st.markdown("### 📉 Top giảm giá")
                         for stock in market_data['top_losers'][:5]:
                             st.markdown(f"""
                             <div style="background: #dc354522; padding: 1rem; border-radius: 8px; margin: 0.5rem 0; border-left: 4px solid #dc3545;">
@@ -742,15 +857,20 @@ with tab3:
                             </div>
                             """, unsafe_allow_html=True)
                             
-    # Available VN stocks from CrewAI
+    # Available VN stocks with real-time status
     st.markdown("---")  # Separator
-    st.subheader("📋 List Stock (CrewAI Real Data)")
+    st.subheader("📋 Danh sách cổ phiếu")
     
-    # Show data source
-    if symbols and symbols[0].get('data_source') == 'CrewAI':
-        st.success(f"✅ Show list{len(symbols)} stock from CrewAI")
+    # Enhanced data source display
+    if data_source == 'CrewAI':
+        st.success(f"✅ Hiển thị {len(symbols)} cổ phiếu từ CrewAI (Real-time)")
+        st.markdown("🔄 **Dữ liệu được cập nhật từ**: Gemini AI + Real Market Data")
     else:
-        st.info(f"📋 Show list {len(symbols)} static stock")
+        st.info(f"📋 Hiển thị {len(symbols)} cổ phiếu tĩnh (Fallback)")
+        if not main_agent.gemini_agent:
+            st.warning("⚠️ **Để lấy dữ liệu thật**: Cấu hình Gemini API key trong sidebar")
+        elif not (main_agent.vn_api.crewai_collector and main_agent.vn_api.crewai_collector.enabled):
+            st.warning("⚠️ **CrewAI chưa khả dụng**: Kiểm tra cấu hình API keys")
     
     # Group by sector
     sectors = {}
@@ -761,32 +881,43 @@ with tab3:
         sectors[sector].append(stock)
     
     for sector, stocks in sectors.items():
-        with st.expander(f"🏢 {sector} ({len(stocks)} stock)"):
+        with st.expander(f"🏢 {sector} ({len(stocks)} cổ phiếu)"):
             # Create beautiful stock cards
             cols = st.columns(3)
             for i, stock in enumerate(stocks):
                 with cols[i % 3]:
+                    # Enhanced stock card with data source indicator
+                    card_color = "#e8f5e8" if data_source == 'CrewAI' else "#f0f0f0"
+                    border_color = "#4caf50" if data_source == 'CrewAI' else "#2196f3"
+                    icon = "🟢" if data_source == 'CrewAI' else "📋"
+                    
                     st.markdown(f"""
                     <div style="
-                        background: linear-gradient(135deg, #e3f2fd, #bbdefb);
+                        background: {card_color};
                         padding: 15px;
                         border-radius: 10px;
                         margin: 5px 0;
-                        border-left: 4px solid #2196f3;
+                        border-left: 4px solid {border_color};
                         text-align: center;
                     ">
+                        <div style="font-size: 12px; opacity: 0.7; margin-bottom: 5px;">{icon}</div>
                         <strong style="color: #1976d2; font-size: 16px;">{stock['symbol']}</strong><br>
-                        <small style="color: #666;">{stock['name']}</small>
+                        <small style="color: #666;">{stock['name']}</small><br>
+                        <small style="color: #999; font-size: 11px;">{stock.get('exchange', 'HOSE')}</small>
                     </div>
                     """, unsafe_allow_html=True)
 
-    # Add market news section to the same tab
+    # Add market news section with CrewAI status
     st.markdown("---")  # Separator
-    st.subheader("Viet Nam Market News")
-    st.markdown("**Viet Nam Market News Overall**")
+    st.subheader("📰 Tin tức thị trường Việt Nam")
     
-    if st.button("🔄 Updating", type="secondary"):
-        with st.spinner("VN Getiing news..."):
+    if data_source == 'CrewAI':
+        st.markdown("**🤖 Tin tức thật từ CrewAI + CafeF.vn**")
+    else:
+        st.markdown("**📋 Tin tức mẫu (Cần cấu hình CrewAI cho tin tức thật)**")
+    
+    if st.button("🔄 Cập nhật", type="secondary"):
+        with st.spinner("Đang lấy tin tức VN..."):
             loop = asyncio.new_event_loop()
             asyncio.set_event_loop(loop)
             market_news = loop.run_until_complete(asyncio.to_thread(main_agent.market_news.get_market_news))
@@ -794,30 +925,45 @@ with tab3:
             if market_news.get('error'):
                 st.error(f"❌ {market_news['error']}")
             else:
-                source = market_news.get('source', 'Unknown')
-                st.success(f"✅ Found {market_news.get('news_count', 0)} news from {source}")
+                source = market_news.get('source', 'Không rõ')
+                news_count = market_news.get('news_count', 0)
+                
+                if 'CrewAI' in source:
+                    st.success(f"✅ Tìm thấy {news_count} tin tức thật từ {source}")
+                elif 'CafeF' in source:
+                    st.info(f"ℹ️ Tìm thấy {news_count} tin tức từ {source}")
+                else:
+                    st.warning(f"⚠️ Sử dụng {news_count} tin tức mẫu từ {source}")
                 
                 for i, news in enumerate(market_news.get('news', []), 1):
-                    with st.expander(f"🌍 {i}. {news.get('title', 'No title')}"):
+                    with st.expander(f"🌍 {i}. {news.get('title', 'Không có tiêu đề')}"):
                         col1, col2 = st.columns([3, 1])
                         with col1:
-                            st.write(f"**Summary:** {news.get('summary', 'no summary')}")
+                            st.write(f"**Tóm tắt:** {news.get('summary', 'không có tóm tắt')}")
                             if news.get('link'):
-                                st.markdown(f"[🔗 Read more]({news['link']})")
+                                st.markdown(f"[🔗 Đọc thêm]({news['link']})")
                         with col2:
-                            st.write(f"**Source:** {news.get('publisher', 'N/A')}")
-                            st.write(f"**Date:** {news.get('published', 'N/A')}")
-                            st.write(f"**Index:** {news.get('source_index', 'N/A')}")
+                            st.write(f"**Nguồn:** {news.get('publisher', 'N/A')}")
+                            st.write(f"**Ngày:** {news.get('published', 'N/A')}")
+                            source_type = "🤖 Real" if 'CrewAI' in market_news.get('source', '') else "📋 Sample"
+                            st.write(f"**Loại:** {source_type}")
+                            st.write(f"**Chỉ mục:** {news.get('source_index', 'N/A')}")
 
 # Tab 4: Stock News
 with tab4:
-    st.markdown(f"## 📰 News for {symbol}")
+    st.markdown(f"## 📰 Tin tức cho {symbol}")
     
     if not symbol:
-        st.warning("⚠️ Please select a stock from the sidebar")
+        st.warning("⚠️ Vui lòng chọn một cổ phiếu từ thanh bên")
     else:
-        if st.button("🔄 Get Latest News", type="primary"):
-            with st.spinner(f"Fetching news for {symbol}..."):
+        # Show CrewAI status for news
+        if data_source == 'CrewAI':
+            st.success("🤖 CrewAI đã sẵn sàng - Tin tức sẽ là dữ liệu thật")
+        else:
+            st.info("📋 Sử dụng tin tức mẫu - Cấu hình CrewAI để lấy tin tức thật")
+    
+        if st.button("🔄 Lấy tin tức mới nhất", type="primary"):
+            with st.spinner(f"Đang lấy tin tức cho {symbol}..."):
                 loop = asyncio.new_event_loop()
                 asyncio.set_event_loop(loop)
                 news_data = loop.run_until_complete(asyncio.to_thread(main_agent.ticker_news.get_ticker_news, symbol, 10))
@@ -826,32 +972,32 @@ with tab4:
                 if news_data.get('error'):
                     st.error(f"❌ {news_data['error']}")
                 else:
-                    st.success(f"✅ Found {news_data.get('news_count', 0)} news articles")
+                    st.success(f"✅ Tìm thấy {news_data.get('news_count', 0)} bài báo")
                     
                     for i, news in enumerate(news_data.get('news', []), 1):
                         st.markdown(create_news_card(
-                            news.get('title', 'No title'),
-                            news.get('summary', 'No summary'),
-                            news.get('published', 'Unknown'),
-                            news.get('publisher', 'Unknown'),
+                            news.get('title', 'Không có tiêu đề'),
+                            news.get('summary', 'Không có tóm tắt'),
+                            news.get('published', 'Không rõ'),
+                            news.get('publisher', 'Không rõ'),
                             news.get('link')
                         ), unsafe_allow_html=True)
 
 # Tab 5: Company Info
 with tab5:
-    st.markdown(f"## 🏢 Company Information: {symbol}")
+    st.markdown(f"## 🏢 Thông tin công ty: {symbol}")
     
     if not symbol:
-        st.warning("⚠️ Please select a stock from the sidebar")
+        st.warning("⚠️ Vui lòng chọn một cổ phiếu từ thanh bên")
     else:
-        if st.button("🔍 Get Company Details", type="primary"):
+        if st.button("🔍 Lấy thông tin chi tiết công ty", type="primary"):
             if not main_agent.vn_api.crewai_collector or not main_agent.vn_api.crewai_collector.enabled:
-                st.warning("⚠️ CrewAI not configured. Please setup in sidebar.")
+                st.warning("⚠️ CrewAI chưa được cấu hình. Vui lòng thiết lập trong thanh bên.")
             else:
-                with st.spinner(f"Analyzing {symbol} company data..."):
+                with st.spinner(f"Đang phân tích dữ liệu công ty {symbol}..."):
                     try:
                         from agents.enhanced_news_agent import create_enhanced_news_agent
-                        enhanced_agent = create_enhanced_news_agent(main_agent.gemini_agent.api_key if main_agent.gemini_agent else None)
+                        enhanced_agent = create_enhanced_news_agent(main_agent.gemini_agent if main_agent.gemini_agent else None)
                         
                         loop = asyncio.new_event_loop()
                         asyncio.set_event_loop(loop)
@@ -867,30 +1013,30 @@ with tab5:
                             company_name = company_info.get('full_name', symbol)
                             company_sector = company_info.get('sector', 'N/A')
                             company_website = company_info.get('website', 'N/A')
-                            company_desc = company_info.get('description', 'No description available')
+                            company_desc = company_info.get('description', 'Không có mô tả')
                             
                             st.markdown(f"""
                             <div class="analysis-container">
                                 <h2 style="color: #2a5298;">{company_name}</h2>
-                                <p><strong>Sector:</strong> {company_sector}</p>
+                                <p><strong>Ngành:</strong> {company_sector}</p>
                                 <p><strong>Website:</strong> <a href="https://{company_website}" target="_blank">{company_website}</a></p>
-                                <p><strong>Description:</strong> {company_desc}</p>
+                                <p><strong>Mô tả:</strong> {company_desc}</p>
                             </div>
                             """, unsafe_allow_html=True)
                             
                             # Sentiment analysis
-                            sentiment = company_data.get('sentiment', 'Neutral')
+                            sentiment = company_data.get('sentiment', 'Trung tính')
                             sentiment_color = "#28a745" if sentiment == "Positive" else "#dc3545" if sentiment == "Negative" else "#ffc107"
                             
                            
                             
                             # Headlines
                             if company_data.get('headlines'):
-                                st.markdown("### 📰 Key Headlines")
+                                st.markdown("### 📰 Tiêu đề chính")
                                 for headline in company_data['headlines']:
                                     if isinstance(headline, dict):
                                         # If headline is a dictionary with title and link
-                                        title = headline.get('title', headline.get('text', 'No title'))
+                                        title = headline.get('title', headline.get('text', 'Không có tiêu đề'))
                                         link = headline.get('link', headline.get('url', ''))
                                         if link:
                                             st.markdown(f"• [{title}]({link})")
@@ -901,14 +1047,14 @@ with tab5:
                                         st.markdown(f"• {headline}")
                     
                     except Exception as e:
-                        st.error(f"❌ Error: {e}")
+                        st.error(f"❌ Lỗi: {e}")
 
 # Tab 6: Market News
 with tab6:
-    st.markdown("## 🌍 Global Market News")
+    st.markdown("## 🌍 Tin tức thị trường toàn cầu")
     
-    if st.button("🔄 Get Market News", type="primary"):
-        with st.spinner("Fetching global market news..."):
+    if st.button("🔄 Lấy tin tức thị trường", type="primary"):
+        with st.spinner("Đang lấy tin tức thị trường toàn cầu..."):
             loop = asyncio.new_event_loop()
             asyncio.set_event_loop(loop)
             market_news = loop.run_until_complete(main_agent.get_international_news())
@@ -917,14 +1063,14 @@ with tab6:
             if market_news.get('error'):
                 st.error(f"❌ {market_news['error']}")
             else:
-                st.success(f"✅ Found {market_news.get('news_count', 0)} market news")
+                st.success(f"✅ Tìm thấy {market_news.get('news_count', 0)} tin tức thị trường")
                 
                 for i, news in enumerate(market_news.get('news', []), 1):
                     st.markdown(create_news_card(
-                        news.get('title', 'No title'),
-                        news.get('summary', 'No summary'),
-                        news.get('published', 'Unknown'),
-                        news.get('publisher', 'Market News'),
+                        news.get('title', 'Không có tiêu đề'),
+                        news.get('summary', 'Không có tóm tắt'),
+                        news.get('published', 'Không rõ'),
+                        news.get('publisher', 'Tin tức thị trường'),
                         news.get('link')
                     ), unsafe_allow_html=True)
 
@@ -933,17 +1079,17 @@ st.markdown("---")
 st.markdown("""
 <div style="text-align: center; padding: 2rem; background: #f8f9fa; border-radius: 10px; margin-top: 2rem;">
     <h4 style="color: #2a5298; margin-bottom: 1rem;">🇻🇳 DUONG AI TRADING PRO</h4>
-    <p style="color: #666; margin-bottom: 0.5rem;">Powered by 6 AI Agents • Google Gemini • CrewAI • Real-time Data</p>
-    <p style="color: #999; font-size: 0.9rem;">Professional Stock Analysis System for Vietnamese & International Markets</p>
+    <p style="color: #666; margin-bottom: 0.5rem;">Được hỗ trợ bởi 6 AI Agents • Google Gemini • CrewAI • Dữ liệu thời gian thực</p>
+    <p style="color: #999; font-size: 0.9rem;">Hệ thống phân tích cổ phiếu chuyên nghiệp cho thị trường Việt Nam & Quốc tế</p>
     <div style="margin-top: 1rem;">
         <span style="background: #2a529822; color: #2a5298; padding: 0.3rem 0.8rem; border-radius: 15px; margin: 0 0.3rem; font-size: 0.8rem;">
-            Version 2.0 Pro
+            Phiên bản 2.0 Pro
         </span>
         <span style="background: #28a74522; color: #28a745; padding: 0.3rem 0.8rem; border-radius: 15px; margin: 0 0.3rem; font-size: 0.8rem;">
-            Real-time Data
+            Dữ liệu thời gian thực
         </span>
         <span style="background: #dc354522; color: #dc3545; padding: 0.3rem 0.8rem; border-radius: 15px; margin: 0 0.3rem; font-size: 0.8rem;">
-            AI-Powered
+            Được hỗ trợ bởi AI
         </span>
     </div>
 </div>
@@ -952,6 +1098,6 @@ st.markdown("""
 # Disclaimer
 st.markdown("""
 <div style="background:#e6e6e6; border: 1px solid #ffeaa7; border-radius: 8px; padding: 1rem; margin-top: 1rem;">
-    <strong>⚠️ Warning:</strong> Còn thở là còn gỡ, dừng lại là thất bại ^^!!!
+    <strong>⚠️ Cảnh báo:</strong> Còn thở là còn gỡ, dừng lại là thất bại ^^!!!
 </div>
 """, unsafe_allow_html=True)

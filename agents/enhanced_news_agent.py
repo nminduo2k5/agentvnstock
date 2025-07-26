@@ -1019,17 +1019,13 @@ class EnhancedNewsAgent:
             return None
 
 # Factory function
-def create_enhanced_news_agent(api_key=None) -> EnhancedNewsAgent:
+def create_enhanced_news_agent(ai_agent=None) -> EnhancedNewsAgent:
     """Create enhanced news and company data agent instance"""
     agent = EnhancedNewsAgent()
     
-    # Cấu hình CrewAI nếu có API key
-    if api_key:
-        try:
-            from src.data.crewai_collector import get_crewai_collector
-            get_crewai_collector(api_key)
-            logger.info("CrewAI configured with API key")
-        except Exception as e:
-            logger.error(f"Failed to configure CrewAI: {e}")
+    # Set AI agent if provided
+    if ai_agent:
+        agent.ai_agent = ai_agent
+        logger.info("AI agent configured for enhanced news agent")
     
     return agent

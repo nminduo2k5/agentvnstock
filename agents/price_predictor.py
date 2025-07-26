@@ -10,11 +10,17 @@ class PricePredictor:
         self.name = "Advanced Price Predictor Agent"
         self.vn_api = vn_api
         self.stock_info = stock_info
+        self.ai_agent = None  # Will be set by main_agent
+        self.crewai_collector = None  # Will be set from vn_api
         self.prediction_periods = {
             'short_term': [1, 3, 7],      # 1 ngày, 3 ngày, 1 tuần
             'medium_term': [14, 30, 60],   # 2 tuần, 1 tháng, 2 tháng
             'long_term': [90, 180, 365]    # 3 tháng, 6 tháng, 1 năm
         }
+    
+    def set_ai_agent(self, ai_agent):
+        """Set AI agent for enhanced predictions"""
+        self.ai_agent = ai_agent
     
     def predict_comprehensive(self, symbol: str, vn_api=None, stock_info=None):
         """Dự đoán giá toàn diện theo từng khoảng thời gian
@@ -45,7 +51,7 @@ class PricePredictor:
             return {"error": str(e)}
     
     def _predict_vn_stock(self, symbol: str, vn_api=None):
-        """Dự đoán cổ phiếu Việt Nam với thuật toán nâng cao sử dụng real data từ stock_info"""
+        """Dự đoán cổ phiếu Việt Nam với real data từ CrewAI + VNStock"""
         try:
             # Use provided VN API or initialize
             if not vn_api:
@@ -55,30 +61,57 @@ class PricePredictor:
                 from src.data.vn_stock_api import VNStockAPI
                 vn_api = VNStockAPI()
             
-            # Import StockInfoDisplay để lấy real data
+            # Get CrewAI collector for real data
+            self.crewai_collector = getattr(vn_api, 'crewai_collector', None)
+            
+            # Try to get real stock data from CrewAI first
+            real_stock_data = None
+            if self.crewai_collector and self.crewai_collector.enabled:
+                try:
+                    import asyncio
+                    loop = asyncio.new_event_loop()
+                    asyncio.set_event_loop(loop)
+                    
+                    # Get real stock news and data from CrewAI
+                    stock_news = loop.run_until_complete(self.crewai_collector.get_stock_news(symbol, limit=5))
+                    
+                    # Get available symbols to find company info
+                    symbols = loop.run_until_complete(self.crewai_collector.get_available_symbols())
+                    company_info = next((s for s in symbols if s['symbol'] == symbol), {})
+                    
+                    loop.close()
+                    
+                    real_stock_data = {
+                        'news': stock_news,
+                        'company_info': company_info,
+                        'data_source': 'CrewAI_Real'
+                    }
+                    print(f"✅ Got real data for {symbol} from CrewAI")
+                    
+                except Exception as e:
+                    print(f"⚠️ CrewAI data failed for {symbol}: {e}")
+            
+            # Get VNStock data as primary source
             import asyncio
             from agents.stock_info import StockInfoDisplay
             
-            # Khởi tạo StockInfoDisplay với VN API
             stock_info = StockInfoDisplay(vn_api)
-            
-            # Lấy dữ liệu chi tiết từ stock_info
             loop = asyncio.new_event_loop()
             asyncio.set_event_loop(loop)
             detailed_data = loop.run_until_complete(stock_info.get_detailed_stock_data(symbol))
             loop.close()
             
             if not detailed_data or detailed_data.get('error'):
-                # Fallback to traditional method if stock_info fails
+                # Fallback to VNStock direct call
                 from vnstock import Vnstock
                 stock_obj = Vnstock().stock(symbol=symbol, source='VCI')
                 end_date = datetime.now().strftime('%Y-%m-%d')
                 start_date = (datetime.now() - timedelta(days=730)).strftime('%Y-%m-%d')
                 hist_data = stock_obj.quote.history(start=start_date, end=end_date, interval='1D')
                 current_price = float(hist_data['close'].iloc[-1])
-                data_source = "VCI_Fallback"
+                data_source = "VCI_Direct" + ("_with_CrewAI" if real_stock_data else "")
             else:
-                # Use real data from stock_info
+                # Use real data from stock_info + CrewAI
                 price_history = detailed_data['price_history']
                 stock_data = detailed_data['stock_data']
                 detailed_metrics = detailed_data['detailed_data']
@@ -87,7 +120,7 @@ class PricePredictor:
                 import pandas as pd
                 hist_data = pd.DataFrame(price_history)
                 current_price = stock_data.price
-                data_source = "StockInfo_Real"
+                data_source = "VNStock_Real" + ("_with_CrewAI" if real_stock_data else "")
             
             if hist_data.empty:
                 return {"error": f"No data found for {symbol}"}
@@ -115,7 +148,7 @@ class PricePredictor:
             # Phân tích rủi ro
             risk_analysis = self._analyze_risk_metrics(hist_data)
             
-            return {
+            result = {
                 "symbol": symbol,
                 "current_price": round(float(current_price), 2),
                 "market": "Vietnam",
@@ -128,6 +161,21 @@ class PricePredictor:
                 "risk_analysis": risk_analysis,
                 "recommendations": self._generate_recommendations(predictions, confidence_scores, risk_analysis)
             }
+            
+            # Add CrewAI real data if available
+            if real_stock_data:
+                result['crewai_news'] = real_stock_data['news']
+                result['company_info'] = real_stock_data['company_info']
+                result['news_sentiment'] = real_stock_data['news'].get('sentiment', 'Neutral')
+                
+                # Enhance predictions with news sentiment
+                sentiment_score = real_stock_data['news'].get('sentiment_score', 0.5)
+                if sentiment_score > 0.6:
+                    result['sentiment_boost'] = 'Positive news may support higher prices'
+                elif sentiment_score < 0.4:
+                    result['sentiment_boost'] = 'Negative news may pressure prices'
+            
+            return result
             
         except Exception as e:
             return {"error": f"VN Stock prediction error: {str(e)}"}
@@ -369,17 +417,14 @@ class PricePredictor:
             return {"error": f"Prediction generation error: {str(e)}"}
 
     def predict_price(self, symbol: str, days: int = 30):
-        """Legacy method for backward compatibility with enhanced real data support"""
-        # Use the class's vn_api and stock_info if available
+        """Enhanced price prediction with AI analysis - returns COMPLETE data for UI"""
+        # Use comprehensive prediction which returns ALL data needed by UI
         result = self.predict_comprehensive(symbol, self.vn_api, self.stock_info)
         
         if "error" in result:
             return result
         
-        # Extract prediction for the requested timeframe
-        current_price = result['current_price']
-        
-        # Find the closest prediction timeframe
+        # Find the closest prediction timeframe for main predicted_price
         if days <= 7:
             prediction_data = result['predictions']['short_term']['7_days']
         elif days <= 30:
@@ -389,20 +434,176 @@ class PricePredictor:
         else:
             prediction_data = result['predictions']['long_term']['180_days']
         
-        # Legacy format response
-        return {
-            "symbol": symbol,
-            "current_price": current_price,
-            "predicted_price": prediction_data['price'],
-            "change_percent": prediction_data['change_percent'],
-            "timeframe": f"{days} days",
-            "confidence": result['confidence_scores'].get('medium_term', 50),
-            "trend": result['trend_analysis']['direction'],
-            "market": result['market'],
-            "data_source": result['data_source'],
-            "risk_level": result['risk_analysis']['risk_level'],
-            "recommendation": result['recommendations']['medium_term']['recommendation']
+        # Return COMPLETE result with predicted_price for the specific timeframe
+        result['predicted_price'] = prediction_data['price']
+        result['change_percent'] = prediction_data['change_percent']
+        result['timeframe'] = f"{days} days"
+        result['confidence'] = result['confidence_scores'].get('medium_term', 50)
+        result['trend'] = result['trend_analysis']['direction']
+        
+        # Add AI enhancement if available
+        if self.ai_agent:
+            try:
+                ai_analysis = self._get_ai_price_analysis(symbol, result, days)
+                result.update(ai_analysis)
+                
+                # Use AI-adjusted predictions if available
+                if ai_analysis.get('ai_adjusted_predictions'):
+                    result['predictions'] = ai_analysis['ai_adjusted_predictions']
+                    result['predicted_price'] = ai_analysis['ai_adjusted_predictions']['medium_term']['30_days']['price']
+                    result['change_percent'] = ai_analysis['ai_adjusted_predictions']['medium_term']['30_days']['change_percent']
+                    
+                # Update trend analysis with AI insights
+                if ai_analysis.get('ai_trend'):
+                    result['trend_analysis']['ai_direction'] = ai_analysis['ai_trend']
+                    result['trend_analysis']['ai_support'] = ai_analysis.get('ai_support', result['trend_analysis']['support_level'])
+                    result['trend_analysis']['ai_resistance'] = ai_analysis.get('ai_resistance', result['trend_analysis']['resistance_level'])
+                    
+            except Exception as e:
+                print(f"⚠️ AI analysis failed: {e}")
+                result['ai_enhanced'] = False
+                result['ai_error'] = str(e)
+        
+        return result
+    
+    def _get_ai_price_analysis(self, symbol: str, technical_data: dict, days: int):
+        """Get AI-enhanced price analysis with REAL prediction adjustments"""
+        try:
+            # Prepare context for AI analysis
+            context = f"""
+Phân tích dự đoán giá cổ phiếu {symbol} trong {days} ngày tới:
+
+DỮ LIỆU KỸ THUẬT:
+- Giá hiện tại: {technical_data['current_price']:,.0f}
+- Xu hướng: {technical_data['trend_analysis']['direction']}
+- Độ tin cậy: {technical_data['confidence_scores'].get('medium_term', 50)}%
+- RSI: {technical_data.get('technical_indicators', {}).get('rsi', 'N/A')}
+- MACD: {technical_data.get('technical_indicators', {}).get('macd', 'N/A')}
+- Bollinger Bands: {technical_data.get('technical_indicators', {}).get('bb_position', 'N/A')}
+- Support: {technical_data['trend_analysis'].get('support_level', 'N/A')}
+- Resistance: {technical_data['trend_analysis'].get('resistance_level', 'N/A')}
+
+Hãy đưa ra:
+1. Điều chỉnh dự đoán giá (tăng/giảm % so với technical analysis)
+2. Điều chỉnh độ tin cậy (tăng/giảm % so với hiện tại)
+3. Xu hướng AI (BULLISH/BEARISH/NEUTRAL)
+4. Lý do chi tiết cho các điều chỉnh
+5. Mức support/resistance AI điều chỉnh
+
+Trả lời theo format:
+PRICE_ADJUSTMENT: [+/-]X%
+CONFIDENCE_ADJUSTMENT: [+/-]Y%
+AI_TREND: [BULLISH/BEARISH/NEUTRAL]
+SUPPORT_ADJUSTMENT: [+/-]Z%
+RESISTANCE_ADJUSTMENT: [+/-]W%
+REASON: [lý do chi tiết]
+"""
+            
+            # Get AI analysis
+            ai_result = self.ai_agent.generate_with_fallback(context, 'price_prediction', max_tokens=600)
+            
+            if ai_result['success']:
+                # Parse AI response for actual adjustments
+                ai_adjustments = self._parse_ai_price_adjustments(ai_result['response'])
+                
+                # Apply AI adjustments to predictions
+                adjusted_predictions = self._apply_ai_price_adjustments(
+                    technical_data['predictions'], 
+                    technical_data['current_price'],
+                    ai_adjustments
+                )
+                
+                return {
+                    'ai_analysis': ai_result['response'],
+                    'ai_model_used': ai_result['model_used'],
+                    'ai_enhanced': True,
+                    'ai_adjustments': ai_adjustments,
+                    'ai_adjusted_predictions': adjusted_predictions,
+                    'enhanced_confidence': max(10, min(95, 
+                        technical_data['confidence_scores'].get('medium_term', 50) + ai_adjustments.get('confidence_adj', 0)
+                    )),
+                    'ai_trend': ai_adjustments.get('trend', technical_data['trend_analysis']['direction']),
+                    'ai_support': technical_data['trend_analysis'].get('support_level', 0) * (1 + ai_adjustments.get('support_adj', 0)/100),
+                    'ai_resistance': technical_data['trend_analysis'].get('resistance_level', 0) * (1 + ai_adjustments.get('resistance_adj', 0)/100)
+                }
+            else:
+                return {'ai_enhanced': False, 'ai_error': ai_result.get('error', 'AI not available')}
+                
+        except Exception as e:
+            return {'ai_enhanced': False, 'ai_error': str(e)}
+    
+    def _parse_ai_price_adjustments(self, ai_response: str):
+        """Parse AI response for numerical adjustments"""
+        import re
+        adjustments = {
+            'price_adj': 0,
+            'confidence_adj': 0, 
+            'trend': 'neutral',
+            'support_adj': 0,
+            'resistance_adj': 0,
+            'reason': ai_response
         }
+        
+        try:
+            # Extract price adjustment
+            price_match = re.search(r'PRICE_ADJUSTMENT:\s*([+-]?\d+(?:\.\d+)?)%', ai_response, re.IGNORECASE)
+            if price_match:
+                adjustments['price_adj'] = float(price_match.group(1))
+            
+            # Extract confidence adjustment  
+            conf_match = re.search(r'CONFIDENCE_ADJUSTMENT:\s*([+-]?\d+(?:\.\d+)?)%', ai_response, re.IGNORECASE)
+            if conf_match:
+                adjustments['confidence_adj'] = float(conf_match.group(1))
+            
+            # Extract AI trend
+            trend_match = re.search(r'AI_TREND:\s*(BULLISH|BEARISH|NEUTRAL)', ai_response, re.IGNORECASE)
+            if trend_match:
+                adjustments['trend'] = trend_match.group(1).lower()
+            
+            # Extract support/resistance adjustments
+            support_match = re.search(r'SUPPORT_ADJUSTMENT:\s*([+-]?\d+(?:\.\d+)?)%', ai_response, re.IGNORECASE)
+            if support_match:
+                adjustments['support_adj'] = float(support_match.group(1))
+                
+            resistance_match = re.search(r'RESISTANCE_ADJUSTMENT:\s*([+-]?\d+(?:\.\d+)?)%', ai_response, re.IGNORECASE)
+            if resistance_match:
+                adjustments['resistance_adj'] = float(resistance_match.group(1))
+                
+        except Exception as e:
+            print(f"⚠️ AI adjustment parsing failed: {e}")
+            
+        return adjustments
+    
+    def _apply_ai_price_adjustments(self, base_predictions: dict, current_price: float, ai_adjustments: dict):
+        """Apply AI adjustments to base predictions"""
+        try:
+            adjusted_predictions = {}
+            price_adj_factor = 1 + (ai_adjustments.get('price_adj', 0) / 100)
+            
+            for timeframe, predictions in base_predictions.items():
+                adjusted_predictions[timeframe] = {}
+                for period, data in predictions.items():
+                    original_price = data['price']
+                    adjusted_price = original_price * price_adj_factor
+                    
+                    # Ensure reasonable bounds
+                    max_change = 0.3  # 30% max change
+                    min_price = current_price * (1 - max_change)
+                    max_price = current_price * (1 + max_change)
+                    adjusted_price = max(min_price, min(max_price, adjusted_price))
+                    
+                    adjusted_predictions[timeframe][period] = {
+                        'price': round(adjusted_price, 2),
+                        'change_percent': round(((adjusted_price - current_price) / current_price) * 100, 2),
+                        'change_amount': round(adjusted_price - current_price, 2),
+                        'ai_adjusted': True
+                    }
+            
+            return adjusted_predictions
+            
+        except Exception as e:
+            print(f"⚠️ AI adjustment application failed: {e}")
+            return base_predictions
     
     def _calculate_trend_multiplier(self, indicators, rsi, bb_position):
         """Tính toán hệ số xu hướng"""

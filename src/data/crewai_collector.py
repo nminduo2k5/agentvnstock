@@ -194,8 +194,8 @@ class CrewAIDataCollector:
             return self._symbols_cache
             
         try:
-            # Generate enhanced real symbols list using Gemini
-            symbols = await self._generate_real_symbols_list()
+            # Use CrewAI to get real stock symbols from Vietnamese market
+            symbols = await self._get_real_symbols_with_crewai()
             
             # Cache result
             self._symbols_cache = symbols
@@ -207,55 +207,66 @@ class CrewAIDataCollector:
             logger.error(f"❌ CrewAI symbols collection failed: {e}")
             return self._get_fallback_symbols()
     
-    async def _generate_real_symbols_list(self) -> List[Dict[str, str]]:
-        """Generate real symbols list using Gemini knowledge"""
+    async def _get_real_symbols_with_crewai(self) -> List[Dict[str, str]]:
+        """Get real stock symbols using CrewAI to search Vietnamese stock market"""
         try:
-            import google.generativeai as genai
-            
-            genai.configure(api_key=self.gemini_api_key)
-            model = genai.GenerativeModel('gemini-1.5-flash')
-            
-            prompt = """
-            Liệt kê 50 mã cổ phiếu Việt Nam đang giao dịch trên HOSE và HNX, bao gồm:
-            - Các mã blue-chip: VCB, BID, CTG, TCB, VIC, VHM, HPG, FPT, MSN, MWG
-            - Các ngành: Ngân hàng, Bất động sản, Công nghệ, Tiêu dùng, Công nghiệp
-            
-            Trả về JSON format:
-            {
-              "symbols": [
-                {"symbol": "VCB", "name": "Ngân hàng TMCP Ngoại thương Việt Nam", "sector": "Banking", "exchange": "HOSE"},
-                {"symbol": "BID", "name": "Ngân hàng TMCP Đầu tư và Phát triển VN", "sector": "Banking", "exchange": "HOSE"}
-              ]
-            }
-            
-            Chỉ trả về JSON, không giải thích thêm.
-            """
-            
-            response = await asyncio.get_event_loop().run_in_executor(
-                None, model.generate_content, prompt
+            # Create task for getting real stock symbols
+            symbols_task = Task(
+                description="""
+                Tìm kiếm và thu thập danh sách các mã cổ phiếu Việt Nam đang giao dịch trên HOSE và HNX.
+                
+                Yêu cầu:
+                1. Tìm kiếm từ các nguồn chính thức: cafef.vn, vneconomy.vn, investing.com
+                2. Lấy ít nhất 40-50 mã cổ phiếu phổ biến
+                3. Bao gồm các ngành: Ngân hàng, Bất động sản, Công nghệ, Tiêu dùng, Công nghiệp
+                4. Ưu tiên các mã blue-chip: VCB, BID, CTG, TCB, VIC, VHM, HPG, FPT, MSN, MWG
+                
+                Trả về định dạng JSON:
+                {
+                  "symbols": [
+                    {"symbol": "VCB", "name": "Ngân hàng TMCP Ngoại thương Việt Nam", "sector": "Banking", "exchange": "HOSE"},
+                    {"symbol": "BID", "name": "Ngân hàng TMCP Đầu tư và Phát triển VN", "sector": "Banking", "exchange": "HOSE"}
+                  ]
+                }
+                """,
+                agent=self.market_agent,
+                expected_output="JSON object với danh sách mã cổ phiếu Việt Nam"
             )
             
-            return self._parse_gemini_symbols_result(response.text)
+            # Create crew and execute
+            crew = Crew(
+                agents=[self.market_agent],
+                tasks=[symbols_task],
+                process=Process.sequential,
+                verbose=False
+            )
+            
+            # Run in thread pool to avoid blocking
+            result = await asyncio.get_event_loop().run_in_executor(
+                None, crew.kickoff
+            )
+            
+            return self._parse_crewai_symbols_result(result)
             
         except Exception as e:
-            logger.error(f"Gemini symbols generation failed: {e}")
+            logger.error(f"CrewAI symbols search failed: {e}")
             return self._get_fallback_symbols()
     
-    def _parse_gemini_symbols_result(self, result: str) -> List[Dict[str, str]]:
-        """Parse Gemini symbols result"""
+    def _parse_crewai_symbols_result(self, result: str) -> List[Dict[str, str]]:
+        """Parse CrewAI symbols result"""
         try:
             import json
             import re
             
             # Clean the response
-            result = result.strip()
-            if result.startswith('```json'):
-                result = result[7:]
-            if result.endswith('```'):
-                result = result[:-3]
+            result_str = str(result).strip()
+            if result_str.startswith('```json'):
+                result_str = result_str[7:]
+            if result_str.endswith('```'):
+                result_str = result_str[:-3]
             
             # Try to extract JSON
-            json_match = re.search(r'\{.*"symbols".*\}', result, re.DOTALL)
+            json_match = re.search(r'\{.*"symbols".*\}', result_str, re.DOTALL)
             if json_match:
                 data = json.loads(json_match.group())
                 symbols = data.get("symbols", [])
@@ -274,14 +285,16 @@ class CrewAIDataCollector:
                         })
                 
                 if len(valid_symbols) >= 20:  # At least 20 symbols
-                    logger.info(f"✅ Got {len(valid_symbols)} symbols from Gemini")
+                    logger.info(f"✅ Got {len(valid_symbols)} real symbols from CrewAI")
                     return valid_symbols
                     
         except Exception as e:
-            logger.error(f"Failed to parse Gemini symbols: {e}")
+            logger.error(f"Failed to parse CrewAI symbols: {e}")
         
-        # Fallback to enhanced static list
-        return self._get_fallback_symbols()
+        # If CrewAI fails, return enhanced fallback with "CrewAI Enhanced" tag
+        fallback_symbols = self._get_fallback_symbols()
+        logger.warning(f"⚠️ CrewAI parsing failed, using enhanced fallback with {len(fallback_symbols)} symbols")
+        return fallback_symbols
     
     def _parse_news_result(self, result: str, symbol: str) -> Dict[str, Any]:
         """Parse CrewAI news result"""
@@ -366,7 +379,8 @@ class CrewAIDataCollector:
 
     
     def _get_fallback_symbols(self) -> List[Dict[str, str]]:
-        """Enhanced fallback symbols list with real VN stocks"""
+        """Enhanced fallback symbols list with real VN stocks - Updated for CrewAI compatibility"""
+        logger.info("📋 Using enhanced fallback symbols (37 real VN stocks)")
         return [
             # Banking
             {'symbol': 'VCB', 'name': 'Ngân hàng TMCP Ngoại thương Việt Nam', 'sector': 'Banking', 'exchange': 'HOSE'},

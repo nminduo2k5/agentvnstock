@@ -10,13 +10,21 @@ class MarketNews:
         self.headers = {
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
         }
+        self.ai_agent = None  # Will be set by main_agent
+    
+    def set_ai_agent(self, ai_agent):
+        """Set AI agent for enhanced market news analysis"""
+        self.ai_agent = ai_agent
     
     def get_market_news(self, category: str = "general"):
         try:
+            # Get base market news first
+            base_news = None
+            
             # Try CafeF first
             cafef_news = self._crawl_cafef_news()
             if cafef_news:
-                return {
+                base_news = {
                     "category": "Vietnam Market",
                     "news_count": len(cafef_news),
                     "news": cafef_news,
@@ -24,7 +32,19 @@ class MarketNews:
                 }
             else:
                 # Fallback to mock VN news
-                return self._get_vn_mock_news()
+                base_news = self._get_vn_mock_news()
+            
+            # Enhance with AI analysis if available
+            if base_news and self.ai_agent:
+                try:
+                    ai_enhancement = self._get_ai_market_analysis(base_news, category)
+                    base_news.update(ai_enhancement)
+                except Exception as e:
+                    print(f"⚠️ AI market analysis failed: {e}")
+                    base_news['ai_enhanced'] = False
+                    base_news['ai_error'] = str(e)
+            
+            return base_news
                 
         except Exception as e:
             print(f"❌ Error crawling CafeF: {e}")
@@ -139,3 +159,90 @@ class MarketNews:
             "news": news_items,
             "source": "Mock VN News"
         }
+    
+    def _get_ai_market_analysis(self, base_news: dict, category: str):
+        """Get AI-enhanced market analysis"""
+        try:
+            # Prepare market news context for AI analysis
+            news_titles = []
+            for news_item in base_news.get('news', []):
+                news_titles.append(f"- {news_item.get('title', '')}")
+            
+            news_context = "\n".join(news_titles[:8])  # Limit to top 8 news
+            
+            context = f"""
+Phân tích thị trường chứng khoán Việt Nam dựa trên tin tức mới nhất:
+
+THÔNG TIN THỊ TRƯỜNG:
+- Danh mục: {base_news.get('category', 'N/A')}
+- Số lượng tin: {base_news.get('news_count', 0)}
+- Nguồn: {base_news.get('source', 'N/A')}
+
+TIN TỨC THỊ TRƯỜNG:
+{news_context}
+
+Hãy đưa ra phân tích chuyên sâu về:
+1. Xu hướng tổng thể của thị trường (tăng/giảm/sideway)
+2. Các yếu tố chính tác động đến thị trường
+3. Nhóm ngành nổi bật (tích cực/tiêu cực)
+4. Dự báo ngắn hạn cho thị trường
+5. Khuyến nghị chiến lược đầu tư
+
+Trả lời ngắn gọn, tập trung vào những điểm quan trọng nhất.
+"""
+            
+            # Get AI analysis
+            ai_result = self.ai_agent.generate_with_fallback(context, 'market_analysis', max_tokens=600)
+            
+            if ai_result['success']:
+                return {
+                    'ai_market_analysis': ai_result['response'],
+                    'ai_model_used': ai_result['model_used'],
+                    'ai_enhanced': True,
+                    'market_sentiment': self._extract_market_sentiment(ai_result['response']),
+                    'market_trend': self._extract_market_trend(ai_result['response'])
+                }
+            else:
+                return {'ai_enhanced': False, 'ai_error': ai_result.get('error', 'AI not available')}
+                
+        except Exception as e:
+            return {'ai_enhanced': False, 'ai_error': str(e)}
+    
+    def _extract_market_sentiment(self, ai_response: str):
+        """Extract market sentiment from AI response"""
+        try:
+            ai_lower = ai_response.lower()
+            
+            # Market sentiment indicators
+            bullish_indicators = ['tăng', 'tích cực', 'bullish', 'khả quan', 'mạnh', 'tốt']
+            bearish_indicators = ['giảm', 'tiêu cực', 'bearish', 'yếu', 'lo ngại', 'rủi ro']
+            
+            bullish_count = sum(1 for indicator in bullish_indicators if indicator in ai_lower)
+            bearish_count = sum(1 for indicator in bearish_indicators if indicator in ai_lower)
+            
+            if bullish_count > bearish_count:
+                return 'BULLISH'
+            elif bearish_count > bullish_count:
+                return 'BEARISH'
+            else:
+                return 'NEUTRAL'
+                
+        except Exception:
+            return 'NEUTRAL'
+    
+    def _extract_market_trend(self, ai_response: str):
+        """Extract market trend from AI response"""
+        try:
+            ai_lower = ai_response.lower()
+            
+            if any(phrase in ai_lower for phrase in ['xu hướng tăng', 'uptrend', 'tăng trưởng']):
+                return 'UPTREND'
+            elif any(phrase in ai_lower for phrase in ['xu hướng giảm', 'downtrend', 'suy giảm']):
+                return 'DOWNTREND'
+            elif any(phrase in ai_lower for phrase in ['sideway', 'đi ngang', 'consolidation']):
+                return 'SIDEWAYS'
+            else:
+                return 'MIXED'
+                
+        except Exception:
+            return 'MIXED'
