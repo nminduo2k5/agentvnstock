@@ -1,31 +1,27 @@
 import google.generativeai as genai
-import openai
 import os
 import logging
 from dotenv import load_dotenv
 from typing import Dict, Any, Optional, List
 import asyncio
 import json
+import time
+from datetime import datetime
 
 load_dotenv()
 logger = logging.getLogger(__name__)
 
 class UnifiedAIAgent:
-    def __init__(self, gemini_api_key: str = None, openai_api_key: str = None):
+    def __init__(self, gemini_api_key: str = None):
         """
-        Initialize Unified AI Agent with multiple AI models
+        Initialize AI Agent with Gemini AI
         """
         self.available_models = {}
         self.model_capabilities = {
             'gemini': {
-                'strengths': ['analysis', 'vietnamese', 'reasoning', 'financial_advice'],
+                'strengths': ['analysis', 'vietnamese', 'reasoning', 'financial_advice', 'prediction', 'technical_analysis', 'news_analysis', 'risk_assessment'],
                 'speed': 'fast',
                 'cost': 'low'
-            },
-            'chatgpt': {
-                'strengths': ['prediction', 'technical_analysis', 'news_analysis', 'risk_assessment'],
-                'speed': 'medium',
-                'cost': 'medium'
             }
         }
         
@@ -43,24 +39,11 @@ class UnifiedAIAgent:
             except Exception as e:
                 logger.error(f"❌ Failed to initialize Gemini: {str(e)}")
         
-        # Initialize OpenAI
-        if not openai_api_key:
-            openai_api_key = os.getenv('OPENAI_API_KEY')
-        
-        if openai_api_key:
-            try:
-                self.openai_client = openai.OpenAI(api_key=openai_api_key)
-                self.available_models['chatgpt'] = self.openai_client
-                self.openai_api_key = openai_api_key
-                logger.info("✅ ChatGPT AI initialized successfully")
-            except Exception as e:
-                logger.error(f"❌ Failed to initialize ChatGPT: {str(e)}")
-        
         if not self.available_models:
-            raise ValueError("At least one AI model must be configured. Please provide API keys.")
+            raise ValueError("Gemini AI must be configured. Please provide GOOGLE_API_KEY.")
     
     def test_connection(self):
-        """Test API connections for all available models"""
+        """Test Gemini API connection"""
         results = {}
         
         if 'gemini' in self.available_models:
@@ -72,68 +55,31 @@ class UnifiedAIAgent:
                 results['gemini'] = False
                 logger.error(f"❌ Gemini connection test failed: {str(e)}")
         
-        if 'chatgpt' in self.available_models:
-            try:
-                response = self.available_models['chatgpt'].chat.completions.create(
-                    model="gpt-3.5-turbo",
-                    messages=[{"role": "user", "content": "Hello"}],
-                    max_tokens=10
-                )
-                results['chatgpt'] = True
-                logger.info("✅ ChatGPT connection test passed")
-            except Exception as e:
-                results['chatgpt'] = False
-                logger.error(f"❌ ChatGPT connection test failed: {str(e)}")
-        
         if not any(results.values()):
-            raise ValueError("All API connection tests failed")
+            raise ValueError("Gemini API connection test failed")
         
         return results
     
     def select_best_model(self, task_type: str) -> str:
         """
-        Automatically select the best AI model for a specific task type
+        Select the best available model for a specific task type
         """
-        task_model_mapping = {
-            'financial_advice': 'gemini',  # Gemini better for Vietnamese financial advice
-            'price_prediction': 'chatgpt',  # ChatGPT better for technical analysis
-            'risk_assessment': 'chatgpt',   # ChatGPT better for risk calculations
-            'news_analysis': 'chatgpt',     # ChatGPT better for news sentiment
-            'market_analysis': 'gemini',    # Gemini better for market reasoning
-            'investment_analysis': 'chatgpt', # ChatGPT better for investment metrics
-            'general_query': 'gemini'       # Gemini better for general Vietnamese queries
-        }
+        # Since we only have Gemini, always return it if available
+        if 'gemini' in self.available_models:
+            return 'gemini'
         
-        preferred_model = task_model_mapping.get(task_type, 'gemini')
-        
-        # Check if preferred model is available, otherwise use any available
-        if preferred_model in self.available_models:
-            return preferred_model
-        elif self.available_models:
-            return list(self.available_models.keys())[0]
-        else:
-            raise ValueError("No AI models available")
+        raise ValueError("Gemini AI model not available")
     
     def generate_with_model(self, prompt: str, model_name: str, max_tokens: int = 1000) -> str:
         """
-        Generate response using specific AI model
+        Generate response using Gemini AI model
         """
         try:
             if model_name == 'gemini' and 'gemini' in self.available_models:
                 response = self.available_models['gemini'].generate_content(prompt)
                 return response.text
-            
-            elif model_name == 'chatgpt' and 'chatgpt' in self.available_models:
-                response = self.available_models['chatgpt'].chat.completions.create(
-                    model="gpt-3.5-turbo",
-                    messages=[{"role": "user", "content": prompt}],
-                    max_tokens=max_tokens,
-                    temperature=0.7
-                )
-                return response.choices[0].message.content
-            
             else:
-                raise ValueError(f"Model {model_name} not available")
+                raise ValueError(f"Model {model_name} not available. Only Gemini is supported.")
                 
         except Exception as e:
             logger.error(f"Error generating with {model_name}: {str(e)}")
@@ -146,33 +92,16 @@ class UnifiedAIAgent:
         primary_model = self.select_best_model(task_type)
         
         try:
-            response = self.generate_with_model(prompt, primary_model, max_tokens)
+            response = self.generate_with_model(prompt, 'gemini', max_tokens)
             return {
                 'response': response,
-                'model_used': primary_model,
+                'model_used': 'gemini',
                 'success': True
             }
         except Exception as e:
-            logger.warning(f"Primary model {primary_model} failed: {str(e)}")
-            
-            # Try other available models
-            for model_name in self.available_models.keys():
-                if model_name != primary_model:
-                    try:
-                        response = self.generate_with_model(prompt, model_name, max_tokens)
-                        return {
-                            'response': response,
-                            'model_used': model_name,
-                            'success': True,
-                            'fallback': True
-                        }
-                    except Exception as fallback_error:
-                        logger.warning(f"Fallback model {model_name} also failed: {str(fallback_error)}")
-                        continue
-            
-            # If all models fail
+            logger.error(f"Gemini model failed: {str(e)}")
             return {
-                'response': f"Lỗi: Tất cả AI models đều không khả dụng. Task: {task_type}",
+                'response': f'Gemini AI failed: {str(e)}',
                 'model_used': None,
                 'success': False,
                 'error': str(e)
@@ -244,7 +173,7 @@ Lưu ý: Trả lời bằng tiếng Việt, dựa trên dữ liệu thực tế,
                 return {
                     "expert_advice": f"❌ **LỖI AI SYSTEM:**\n{result.get('response', 'Không thể kết nối với AI models')}\n\n⚠️ **GỢI Ý:**\n- Kiểm tra API keys\n- Thử lại sau vài phút\n- Liên hệ hỗ trợ nếu vấn đề tiếp tục",
                     "recommendations": [
-                        "Kiểm tra API keys (Gemini/OpenAI)",
+                        "Kiểm tra Gemini API key",
                         "Thử lại sau vài phút", 
                         "Liên hệ hỗ trợ kỹ thuật",
                         "Sử dụng chế độ offline"
@@ -464,6 +393,130 @@ Trả lời bằng tiếng Việt, chuyên nghiệp nhưng dễ hiểu.
             return "stock_specific"
         
         return "general"
+    
+    def get_api_status(self) -> Dict[str, Any]:
+        """Get comprehensive API status information"""
+        status = {
+            'timestamp': datetime.now().isoformat(),
+            'available_models': list(self.available_models.keys()),
+            'model_count': len(self.available_models),
+            'capabilities': self.model_capabilities,
+            'api_keys_configured': {}
+        }
+        
+        # Check API key configuration
+        status['api_keys_configured']['gemini'] = hasattr(self, 'gemini_api_key') and bool(self.gemini_api_key)
+        
+        # Test connections
+        try:
+            connection_results = self.test_connection()
+            status['connection_status'] = connection_results
+            status['healthy_models'] = [model for model, healthy in connection_results.items() if healthy]
+        except Exception as e:
+            status['connection_status'] = {'error': str(e)}
+            status['healthy_models'] = []
+        
+        return status
+    
+    def update_api_key(self, provider: str, api_key: str) -> Dict[str, Any]:
+        """Dynamically update Gemini API key"""
+        try:
+            if provider.lower() == 'gemini':
+                genai.configure(api_key=api_key)
+                model_name = os.getenv('GEMINI_MODEL', 'gemini-1.5-flash')
+                self.available_models['gemini'] = genai.GenerativeModel(model_name)
+                self.gemini_api_key = api_key
+                logger.info("✅ Gemini API key updated successfully")
+                return {'success': True, 'message': 'Gemini API key updated successfully'}
+            else:
+                return {'success': False, 'message': f'Only Gemini provider is supported. Got: {provider}'}
+                
+        except Exception as e:
+            logger.error(f"❌ Failed to update {provider} API key: {str(e)}")
+            return {'success': False, 'message': f'Failed to update {provider} API key: {str(e)}'}
+    
+    def get_model_recommendations(self, task_type: str) -> Dict[str, Any]:
+        """Get model recommendations for specific task types"""
+        recommendations = {
+            'task_type': task_type,
+            'primary_model': self.select_best_model(task_type),
+            'available_alternatives': [],
+            'reasoning': ''
+        }
+        
+        # Get all available models except primary
+        primary = recommendations['primary_model']
+        alternatives = [model for model in self.available_models.keys() if model != primary]
+        recommendations['available_alternatives'] = alternatives
+        
+        # Add reasoning based on task type
+        task_reasoning = {
+            'financial_advice': 'Gemini excels at Vietnamese financial analysis and reasoning',
+            'price_prediction': 'Gemini provides comprehensive technical analysis and prediction models',
+            'risk_assessment': 'Gemini offers superior risk calculation and assessment',
+            'news_analysis': 'Gemini has excellent sentiment analysis capabilities',
+            'market_analysis': 'Gemini provides excellent market reasoning and context understanding',
+            'investment_analysis': 'Gemini excels at investment metrics and calculations',
+            'general_query': 'Gemini handles Vietnamese queries and general reasoning perfectly'
+        }
+        
+        recommendations['reasoning'] = task_reasoning.get(task_type, 'Default model selection based on availability')
+        
+        return recommendations
+    
+    async def generate_async(self, prompt: str, task_type: str, max_tokens: int = 1000) -> Dict[str, Any]:
+        """Asynchronous generation with fallback support"""
+        try:
+            # Run the synchronous method in a thread pool
+            loop = asyncio.get_event_loop()
+            result = await loop.run_in_executor(
+                None, 
+                self.generate_with_fallback, 
+                prompt, 
+                task_type, 
+                max_tokens
+            )
+            return result
+        except Exception as e:
+            logger.error(f"Async generation failed: {str(e)}")
+            return {
+                'response': f'Async generation error: {str(e)}',
+                'model_used': None,
+                'success': False,
+                'error': str(e)
+            }
+    
+    def batch_generate(self, prompts: List[Dict[str, Any]], max_concurrent: int = 3) -> List[Dict[str, Any]]:
+        """Generate responses for multiple prompts with concurrency control"""
+        async def process_batch():
+            semaphore = asyncio.Semaphore(max_concurrent)
+            
+            async def process_single(prompt_data):
+                async with semaphore:
+                    prompt = prompt_data.get('prompt', '')
+                    task_type = prompt_data.get('task_type', 'general_query')
+                    max_tokens = prompt_data.get('max_tokens', 1000)
+                    
+                    result = await self.generate_async(prompt, task_type, max_tokens)
+                    result['original_data'] = prompt_data
+                    return result
+            
+            tasks = [process_single(prompt_data) for prompt_data in prompts]
+            return await asyncio.gather(*tasks, return_exceptions=True)
+        
+        try:
+            loop = asyncio.get_event_loop()
+            if loop.is_running():
+                # If we're already in an async context, create a new event loop
+                import concurrent.futures
+                with concurrent.futures.ThreadPoolExecutor() as executor:
+                    future = executor.submit(asyncio.run, process_batch())
+                    return future.result()
+            else:
+                return asyncio.run(process_batch())
+        except Exception as e:
+            logger.error(f"Batch generation failed: {str(e)}")
+            return [{'success': False, 'error': str(e)} for _ in prompts]
 
 # Backward compatibility alias
 GeminiAgent = UnifiedAIAgent

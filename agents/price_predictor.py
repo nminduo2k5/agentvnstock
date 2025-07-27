@@ -136,14 +136,17 @@ class PricePredictor:
                 technical_indicators['dividend_yield'] = detailed_metrics.get('dividend_yield', 0)
                 technical_indicators['beta'] = detailed_metrics.get('beta', technical_indicators.get('beta', 1))
             
+            # Apply machine learning enhancements
+            ml_predictions = self._apply_ml_predictions(hist_data, technical_indicators)
+            
             # Phân tích xu hướng và pattern
             trend_analysis = self._analyze_market_trend(hist_data)
             
-            # Dự đoán giá theo từng khoảng thời gian
-            predictions = self._generate_multi_timeframe_predictions(hist_data, technical_indicators)
+            # Dự đoán giá theo từng khoảng thời gian với ML enhancement
+            predictions = self._generate_multi_timeframe_predictions(hist_data, technical_indicators, ml_predictions)
             
-            # Tính toán độ tin cậy
-            confidence_scores = self._calculate_confidence_scores(hist_data, technical_indicators)
+            # Tính toán độ tin cậy với ML validation
+            confidence_scores = self._calculate_confidence_scores(hist_data, technical_indicators, ml_predictions)
             
             # Phân tích rủi ro
             risk_analysis = self._analyze_risk_metrics(hist_data)
@@ -365,7 +368,173 @@ class PricePredictor:
         except Exception as e:
             return {"error": f"Trend analysis error: {str(e)}"}
     
-    def _generate_multi_timeframe_predictions(self, data, indicators):
+    def _apply_ml_predictions(self, data, indicators):
+        """Apply machine learning-based predictions using simple models"""
+        try:
+            # Prepare features for ML
+            features = self._prepare_ml_features(data, indicators)
+            
+            # Simple linear regression for trend prediction
+            linear_prediction = self._linear_trend_prediction(data)
+            
+            # Moving average convergence prediction
+            ma_prediction = self._moving_average_prediction(data)
+            
+            # Momentum-based prediction
+            momentum_prediction = self._momentum_prediction(data, indicators)
+            
+            # Ensemble prediction (weighted average)
+            ensemble_weights = [0.4, 0.3, 0.3]  # Linear, MA, Momentum
+            ensemble_prediction = (
+                linear_prediction * ensemble_weights[0] +
+                ma_prediction * ensemble_weights[1] +
+                momentum_prediction * ensemble_weights[2]
+            )
+            
+            return {
+                'linear_prediction': linear_prediction,
+                'ma_prediction': ma_prediction,
+                'momentum_prediction': momentum_prediction,
+                'ensemble_prediction': ensemble_prediction,
+                'ml_confidence': self._calculate_ml_confidence(data, [linear_prediction, ma_prediction, momentum_prediction]),
+                'features_used': len(features)
+            }
+            
+        except Exception as e:
+            return {'error': f"ML prediction error: {str(e)}"}
+    
+    def _prepare_ml_features(self, data, indicators):
+        """Prepare features for machine learning models"""
+        try:
+            features = []
+            
+            # Price-based features
+            features.extend([
+                indicators.get('sma_5', 0),
+                indicators.get('sma_20', 0),
+                indicators.get('sma_50', 0),
+                indicators.get('ema_12', 0),
+                indicators.get('ema_26', 0)
+            ])
+            
+            # Technical indicator features
+            features.extend([
+                indicators.get('rsi', 50),
+                indicators.get('macd', 0),
+                indicators.get('bb_position', 0.5),
+                indicators.get('stoch_k', 50),
+                indicators.get('williams_r', -50)
+            ])
+            
+            # Volume features (if available)
+            if 'volume' in data.columns:
+                features.extend([
+                    indicators.get('volume_ratio', 1),
+                    indicators.get('obv_trend', 0)
+                ])
+            
+            # Volatility features
+            features.extend([
+                indicators.get('volatility', 20),
+                indicators.get('atr', 0)
+            ])
+            
+            return [f for f in features if f is not None and not np.isnan(f)]
+            
+        except Exception as e:
+            return []
+    
+    def _linear_trend_prediction(self, data, days_ahead=30):
+        """Simple linear regression trend prediction"""
+        try:
+            prices = data['close'].values[-60:]  # Use last 60 days
+            if len(prices) < 10:
+                return data['close'].iloc[-1]
+            
+            # Create time series
+            x = np.arange(len(prices))
+            
+            # Simple linear regression
+            slope = np.polyfit(x, prices, 1)[0]
+            
+            # Predict future price
+            future_price = prices[-1] + (slope * days_ahead)
+            
+            return max(0, future_price)  # Ensure non-negative price
+            
+        except Exception as e:
+            return data['close'].iloc[-1]
+    
+    def _moving_average_prediction(self, data):
+        """Moving average convergence prediction"""
+        try:
+            sma_5 = data['close'].rolling(5).mean().iloc[-1]
+            sma_20 = data['close'].rolling(20).mean().iloc[-1]
+            sma_50 = data['close'].rolling(50).mean().iloc[-1]
+            
+            # Weighted prediction based on MA convergence
+            if sma_5 > sma_20 > sma_50:  # Strong uptrend
+                prediction = sma_5 * 1.05
+            elif sma_5 < sma_20 < sma_50:  # Strong downtrend
+                prediction = sma_5 * 0.95
+            else:  # Neutral/mixed signals
+                prediction = (sma_5 + sma_20 + sma_50) / 3
+            
+            return prediction
+            
+        except Exception as e:
+            return data['close'].iloc[-1]
+    
+    def _momentum_prediction(self, data, indicators):
+        """Momentum-based prediction using RSI and MACD"""
+        try:
+            current_price = data['close'].iloc[-1]
+            rsi = indicators.get('rsi', 50)
+            macd = indicators.get('macd', 0)
+            macd_signal = indicators.get('macd_signal', 0)
+            
+            # RSI-based adjustment
+            if rsi > 70:  # Overbought
+                rsi_factor = 0.98
+            elif rsi < 30:  # Oversold
+                rsi_factor = 1.02
+            else:
+                rsi_factor = 1.0
+            
+            # MACD-based adjustment
+            if macd > macd_signal:  # Bullish
+                macd_factor = 1.01
+            else:  # Bearish
+                macd_factor = 0.99
+            
+            prediction = current_price * rsi_factor * macd_factor
+            
+            return prediction
+            
+        except Exception as e:
+            return data['close'].iloc[-1]
+    
+    def _calculate_ml_confidence(self, data, predictions):
+        """Calculate confidence based on ML model agreement"""
+        try:
+            if len(predictions) < 2:
+                return 50
+            
+            current_price = data['close'].iloc[-1]
+            
+            # Calculate prediction variance
+            pred_array = np.array(predictions)
+            variance = np.var(pred_array) / (current_price ** 2)  # Normalized variance
+            
+            # Lower variance = higher confidence
+            confidence = max(30, min(90, 80 - (variance * 1000)))
+            
+            return round(confidence, 1)
+            
+        except Exception as e:
+            return 50
+    
+    def _generate_multi_timeframe_predictions(self, data, indicators, ml_predictions=None):
         """Tạo dự đoán theo nhiều khung thời gian"""
         try:
             current_price = float(data['close'].iloc[-1])
@@ -380,12 +549,24 @@ class PricePredictor:
             # Tính toán hệ số điều chỉnh dựa trên các chỉ báo
             trend_multiplier = self._calculate_trend_multiplier(indicators, rsi, bb_position)
             
+            # Use ML ensemble prediction if available
+            ml_adjustment = 0
+            if ml_predictions and not ml_predictions.get('error'):
+                ensemble_pred = ml_predictions.get('ensemble_prediction', current_price)
+                ml_adjustment = (ensemble_pred - current_price) / current_price
+                # Limit ML adjustment to reasonable range
+                ml_adjustment = max(-0.15, min(0.15, ml_adjustment))
+            
             for period_type, days_list in self.prediction_periods.items():
                 predictions[period_type] = {}
                 
                 for days in days_list:
-                    # Thuật toán dự đoán kết hợp nhiều yếu tố
+                    # Thuật toán dự đoán kết hợp nhiều yếu tố + ML
                     base_change = self._calculate_base_change(days, volatility, trend_multiplier)
+                    
+                    # Apply ML adjustment with time decay
+                    time_decay = max(0.1, 1 - (days / 365))  # ML more relevant for shorter periods
+                    ml_contribution = ml_adjustment * time_decay * 0.3  # 30% weight for ML
                     
                     # Điều chỉnh dựa trên MACD
                     macd_adjustment = macd_signal * min(0.02, volatility * 0.1) * (days / 30)
@@ -396,8 +577,8 @@ class PricePredictor:
                     # Điều chỉnh dựa trên Bollinger Bands
                     bb_adjustment = self._calculate_bb_adjustment(bb_position, days)
                     
-                    # Tổng hợp các điều chỉnh
-                    total_change = base_change + macd_adjustment + rsi_adjustment + bb_adjustment
+                    # Tổng hợp các điều chỉnh bao gồm ML
+                    total_change = base_change + ml_contribution + macd_adjustment + rsi_adjustment + bb_adjustment
                     
                     # Giới hạn thay đổi tối đa
                     max_change = min(0.3, volatility * 2 * (days / 30))
@@ -416,8 +597,12 @@ class PricePredictor:
         except Exception as e:
             return {"error": f"Prediction generation error: {str(e)}"}
 
-    def predict_price(self, symbol: str, days: int = 30):
-        """Enhanced price prediction with AI analysis - returns COMPLETE data for UI"""
+    def predict_price(self, symbol: str):
+        """Simple price prediction for backward compatibility"""
+        return self.predict_comprehensive(symbol, self.vn_api, self.stock_info)
+    
+    def predict_price_enhanced(self, symbol: str, days: int = 30, risk_tolerance: int = 50, time_horizon: str = "Trung hạn", investment_amount: int = 10000000):
+        """Enhanced price prediction with AI analysis and risk-adjusted recommendations"""
         # Use comprehensive prediction which returns ALL data needed by UI
         result = self.predict_comprehensive(symbol, self.vn_api, self.stock_info)
         
@@ -441,10 +626,15 @@ class PricePredictor:
         result['confidence'] = result['confidence_scores'].get('medium_term', 50)
         result['trend'] = result['trend_analysis']['direction']
         
+        # Add risk-adjusted analysis
+        result['risk_adjusted_analysis'] = self._get_risk_adjusted_analysis(
+            result, risk_tolerance, time_horizon, investment_amount
+        )
+        
         # Add AI enhancement if available
         if self.ai_agent:
             try:
-                ai_analysis = self._get_ai_price_analysis(symbol, result, days)
+                ai_analysis = self._get_ai_price_analysis(symbol, result, days, risk_tolerance, time_horizon)
                 result.update(ai_analysis)
                 
                 # Use AI-adjusted predictions if available
@@ -466,29 +656,169 @@ class PricePredictor:
         
         return result
     
-    def _get_ai_price_analysis(self, symbol: str, technical_data: dict, days: int):
-        """Get AI-enhanced price analysis with REAL prediction adjustments"""
+    def _get_risk_adjusted_analysis(self, result: dict, risk_tolerance: int, time_horizon: str, investment_amount: int):
+        """Generate risk-adjusted analysis based on user profile"""
         try:
-            # Prepare context for AI analysis
+            current_price = result['current_price']
+            volatility = result.get('technical_indicators', {}).get('volatility', 20)
+            
+            # Determine risk profile
+            if risk_tolerance <= 30:
+                risk_profile = "Conservative"
+                max_position_size = 0.05  # 5% max position
+                stop_loss_pct = 5  # 5% stop loss
+                target_return = 8  # 8% annual target
+            elif risk_tolerance <= 70:
+                risk_profile = "Moderate"
+                max_position_size = 0.10  # 10% max position
+                stop_loss_pct = 8  # 8% stop loss
+                target_return = 15  # 15% annual target
+            else:
+                risk_profile = "Aggressive"
+                max_position_size = 0.20  # 20% max position
+                stop_loss_pct = 12  # 12% stop loss
+                target_return = 25  # 25% annual target
+            
+            # Calculate position sizing
+            max_investment = investment_amount * max_position_size
+            shares_to_buy = int(max_investment / current_price)
+            actual_investment = shares_to_buy * current_price
+            
+            # Calculate stop loss and take profit levels
+            stop_loss_price = current_price * (1 - stop_loss_pct / 100)
+            
+            # Adjust target based on time horizon
+            time_multiplier = {"Ngắn hạn": 0.5, "Trung hạn": 1.0, "Dài hạn": 1.5}.get(time_horizon, 1.0)
+            adjusted_target_return = target_return * time_multiplier
+            take_profit_price = current_price * (1 + adjusted_target_return / 100)
+            
+            # Risk assessment
+            risk_score = min(10, max(1, (volatility / 5) + (10 - risk_tolerance / 10)))
+            
+            # Generate recommendations
+            recommendations = []
+            if risk_profile == "Conservative":
+                recommendations.extend([
+                    "Ưu tiên cổ phiếu blue-chip với cổ tức ổn định",
+                    "Đầu tư định kỳ (DCA) để giảm rủi ro thời điểm",
+                    "Không nên đầu tư quá 5% tổng tài sản vào 1 cổ phiếu"
+                ])
+            elif risk_profile == "Moderate":
+                recommendations.extend([
+                    "Cân bằng giữa tăng trưởng và ổn định",
+                    "Có thể chấp nhận biến động ngắn hạn",
+                    "Đa dạng hóa danh mục với 8-12 cổ phiếu"
+                ])
+            else:
+                recommendations.extend([
+                    "Tập trung vào cổ phiếu tăng trưởng cao",
+                    "Có thể sử dụng margin với thận trọng",
+                    "Chấp nhận biến động mạnh để đạt lợi nhuận cao"
+                ])
+            
+            # Add volatility-based recommendations
+            if volatility > 30:
+                recommendations.append("⚠️ Cổ phiếu có độ biến động cao - cân nhắc giảm tỷ trọng")
+            elif volatility < 15:
+                recommendations.append("✅ Cổ phiếu ổn định - phù hợp với chiến lược dài hạn")
+            
+            return {
+                'risk_profile': risk_profile,
+                'risk_tolerance': risk_tolerance,
+                'risk_score': round(risk_score, 1),
+                'position_sizing': {
+                    'max_investment': max_investment,
+                    'recommended_shares': shares_to_buy,
+                    'actual_investment': actual_investment,
+                    'position_percentage': round(actual_investment / investment_amount * 100, 2)
+                },
+                'risk_management': {
+                    'stop_loss_price': round(stop_loss_price, 2),
+                    'stop_loss_pct': stop_loss_pct,
+                    'take_profit_price': round(take_profit_price, 2),
+                    'target_return_pct': adjusted_target_return
+                },
+                'recommendations': recommendations,
+                'time_horizon': time_horizon,
+                'suitability_score': self._calculate_suitability_score(result, risk_tolerance, volatility)
+            }
+            
+        except Exception as e:
+            return {'error': f"Risk analysis error: {str(e)}"}
+    
+    def _calculate_suitability_score(self, result: dict, risk_tolerance: int, volatility: float):
+        """Calculate how suitable this stock is for the user's risk profile"""
+        try:
+            score = 50  # Base score
+            
+            # Adjust based on volatility vs risk tolerance
+            vol_risk_match = 100 - abs(volatility - risk_tolerance)
+            score += (vol_risk_match - 50) * 0.3
+            
+            # Adjust based on trend strength
+            trend_direction = result.get('trend_analysis', {}).get('direction', 'neutral')
+            if trend_direction == 'bullish':
+                score += 15
+            elif trend_direction == 'bearish':
+                score -= 15
+            
+            # Adjust based on technical indicators
+            rsi = result.get('technical_indicators', {}).get('rsi', 50)
+            if 30 <= rsi <= 70:  # Good RSI range
+                score += 10
+            elif rsi > 80 or rsi < 20:  # Extreme RSI
+                score -= 10
+            
+            # Adjust based on confidence
+            confidence = result.get('confidence_scores', {}).get('medium_term', 50)
+            score += (confidence - 50) * 0.2
+            
+            return max(0, min(100, round(score, 1)))
+            
+        except Exception as e:
+            return 50  # Default neutral score
+    
+    def _get_ai_price_analysis(self, symbol: str, technical_data: dict, days: int, risk_tolerance: int = 50, time_horizon: str = "Trung hạn"):
+        """Get AI-enhanced price analysis with REAL prediction adjustments and risk-aware recommendations"""
+        try:
+            # Determine risk profile for AI context
+            risk_profile = "Conservative" if risk_tolerance <= 30 else "Moderate" if risk_tolerance <= 70 else "Aggressive"
+            
+            # Get CrewAI news sentiment if available
+            news_context = ""
+            if technical_data.get('crewai_news'):
+                news_sentiment = technical_data['crewai_news'].get('sentiment', 'Neutral')
+                news_context = f"\n- Sentiment tin tức: {news_sentiment}"
+            
+            # Prepare enhanced context for AI analysis
             context = f"""
-Phân tích dự đoán giá cổ phiếu {symbol} trong {days} ngày tới:
+Phân tích dự đoán giá cổ phiếu {symbol} trong {days} ngày tới cho nhà đầu tư {risk_profile}:
+
+HỒ SƠ NHÀ ĐẦU TƯ:
+- Khả năng chấp nhận rủi ro: {risk_tolerance}% ({risk_profile})
+- Khung thời gian: {time_horizon}
+- Mục tiêu: {"Bảo toàn vốn + lợi nhuận ổn định" if risk_profile == "Conservative" else "Cân bằng tăng trưởng và rủi ro" if risk_profile == "Moderate" else "Tối đa hóa lợi nhuận"}
 
 DỮ LIỆU KỸ THUẬT:
-- Giá hiện tại: {technical_data['current_price']:,.0f}
+- Giá hiện tại: {technical_data['current_price']:,.0f} VND
 - Xu hướng: {technical_data['trend_analysis']['direction']}
 - Độ tin cậy: {technical_data['confidence_scores'].get('medium_term', 50)}%
 - RSI: {technical_data.get('technical_indicators', {}).get('rsi', 'N/A')}
 - MACD: {technical_data.get('technical_indicators', {}).get('macd', 'N/A')}
 - Bollinger Bands: {technical_data.get('technical_indicators', {}).get('bb_position', 'N/A')}
+- Volatility: {technical_data.get('technical_indicators', {}).get('volatility', 'N/A')}%
 - Support: {technical_data['trend_analysis'].get('support_level', 'N/A')}
-- Resistance: {technical_data['trend_analysis'].get('resistance_level', 'N/A')}
+- Resistance: {technical_data['trend_analysis'].get('resistance_level', 'N/A')}{news_context}
 
-Hãy đưa ra:
+NHIỆM VỤ:
+Dựa trên hồ sơ rủi ro {risk_profile}, hãy điều chỉnh dự đoán kỹ thuật và đưa ra khuyến nghị phù hợp:
+
 1. Điều chỉnh dự đoán giá (tăng/giảm % so với technical analysis)
-2. Điều chỉnh độ tin cậy (tăng/giảm % so với hiện tại)
+2. Điều chỉnh độ tin cậy (tăng/giảm % dựa trên risk profile)
 3. Xu hướng AI (BULLISH/BEARISH/NEUTRAL)
 4. Lý do chi tiết cho các điều chỉnh
 5. Mức support/resistance AI điều chỉnh
+6. Khuyến nghị cụ thể cho {risk_profile} investor
 
 Trả lời theo format:
 PRICE_ADJUSTMENT: [+/-]X%
@@ -496,7 +826,8 @@ CONFIDENCE_ADJUSTMENT: [+/-]Y%
 AI_TREND: [BULLISH/BEARISH/NEUTRAL]
 SUPPORT_ADJUSTMENT: [+/-]Z%
 RESISTANCE_ADJUSTMENT: [+/-]W%
-REASON: [lý do chi tiết]
+RISK_RECOMMENDATION: [BUY/HOLD/SELL] cho {risk_profile}
+REASON: [lý do chi tiết phù hợp với risk profile]
 """
             
             # Get AI analysis
@@ -668,7 +999,7 @@ REASON: [lý do chi tiết]
         else:
             return 0
     
-    def _calculate_confidence_scores(self, data, indicators):
+    def _calculate_confidence_scores(self, data, indicators, ml_predictions=None):
         """Tính toán độ tin cậy của dự đoán"""
         try:
             scores = {}
@@ -694,10 +1025,26 @@ REASON: [lý do chi tiết]
                 else:
                     volume_score = 30
             
-            # Overall confidence for different timeframes
-            scores['short_term'] = round((data_quality * 0.2 + volatility_score * 0.3 + trend_consistency * 0.3 + volume_score * 0.2), 1)
-            scores['medium_term'] = round((data_quality * 0.3 + volatility_score * 0.2 + trend_consistency * 0.4 + volume_score * 0.1), 1)
-            scores['long_term'] = round((data_quality * 0.4 + volatility_score * 0.1 + trend_consistency * 0.5), 1)
+            # ML confidence boost if available
+            ml_confidence_boost = 0
+            if ml_predictions and not ml_predictions.get('error'):
+                ml_confidence = ml_predictions.get('ml_confidence', 50)
+                ml_confidence_boost = (ml_confidence - 50) * 0.2  # 20% weight for ML confidence
+            
+            # Overall confidence for different timeframes with ML enhancement
+            base_short = data_quality * 0.2 + volatility_score * 0.3 + trend_consistency * 0.3 + volume_score * 0.2
+            base_medium = data_quality * 0.3 + volatility_score * 0.2 + trend_consistency * 0.4 + volume_score * 0.1
+            base_long = data_quality * 0.4 + volatility_score * 0.1 + trend_consistency * 0.5
+            
+            scores['short_term'] = round(max(10, min(95, base_short + ml_confidence_boost)), 1)
+            scores['medium_term'] = round(max(10, min(95, base_medium + ml_confidence_boost * 0.8)), 1)
+            scores['long_term'] = round(max(10, min(95, base_long + ml_confidence_boost * 0.5)), 1)
+            
+            # Add ML-specific metrics if available
+            if ml_predictions and not ml_predictions.get('error'):
+                scores['ml_enhanced'] = True
+                scores['ml_confidence'] = ml_predictions.get('ml_confidence', 50)
+                scores['features_used'] = ml_predictions.get('features_used', 0)
             
             return scores
             

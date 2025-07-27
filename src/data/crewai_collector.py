@@ -11,6 +11,16 @@ from typing import Dict, List, Any, Optional
 from datetime import datetime
 from dotenv import load_dotenv
 
+# Import market schedule utility
+try:
+    from ..utils.market_schedule import market_schedule, get_market_status
+except ImportError:
+    # Fallback if import fails
+    def get_market_status():
+        now = datetime.now()
+        is_weekend = now.weekday() >= 5
+        return {'is_weekend': is_weekend, 'is_open': not is_weekend and 9 <= now.hour <= 15}
+
 try:
     from crewai import Agent, Task, Crew, Process, LLM
     from crewai_tools import SerperDevTool, ScrapeWebsiteTool
@@ -184,27 +194,49 @@ class CrewAIDataCollector:
             return self._get_fallback_market_news()
     
     async def get_available_symbols(self) -> List[Dict[str, str]]:
-        """Get available stock symbols using CrewAI real data search"""
+        """Get available stock symbols using CrewAI real data search with market-aware logic"""
         if not self.enabled:
+            logger.info("📋 CrewAI disabled - using fallback symbols")
             return self._get_fallback_symbols()
         
-        # Check cache (1 hour)
+        # Check market status for intelligent caching
+        market_status = get_market_status()
+        
+        # Adjust cache duration based on market status
+        if market_status.get('is_weekend', False):
+            cache_duration = 7200  # 2 hours on weekend
+            logger.info("🏖️ Weekend detected - using extended cache")
+        elif market_status.get('is_open', False):
+            cache_duration = 1800  # 30 minutes during trading hours
+        else:
+            cache_duration = 3600  # 1 hour after hours
+        
+        # Check cache with dynamic duration
         if (self._symbols_cache and self._symbols_cache_time and 
-            (datetime.now() - self._symbols_cache_time).seconds < 3600):
+            (datetime.now() - self._symbols_cache_time).seconds < cache_duration):
+            logger.info(f"📊 Using cached symbols (age: {(datetime.now() - self._symbols_cache_time).seconds}s)")
             return self._symbols_cache
+            
+        # Decide whether to use CrewAI based on market conditions
+        if market_status.get('is_weekend', False):
+            logger.info("🏖️ Weekend: Skipping CrewAI search, using fallback")
+            return self._get_fallback_symbols()
             
         try:
             # Use CrewAI to get real stock symbols from Vietnamese market
+            logger.info("🤖 Fetching fresh symbols with CrewAI...")
             symbols = await self._get_real_symbols_with_crewai()
             
             # Cache result
             self._symbols_cache = symbols
             self._symbols_cache_time = datetime.now()
             
+            logger.info(f"✅ CrewAI symbols fetched: {len(symbols)} symbols")
             return symbols
             
         except Exception as e:
             logger.error(f"❌ CrewAI symbols collection failed: {e}")
+            logger.info("🔄 Falling back to static symbols")
             return self._get_fallback_symbols()
     
     async def _get_real_symbols_with_crewai(self) -> List[Dict[str, str]]:

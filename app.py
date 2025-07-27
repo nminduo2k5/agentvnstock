@@ -225,10 +225,78 @@ def display_price_prediction(pred):
         ai_model = pred.get('ai_model_used', 'Unknown')
         st.success(f"🤖 Phân tích được tăng cường bởi AI: {ai_model}")
         if pred.get('ai_analysis'):
-            with st.expander("🧠 Phân tích AI chi tiết"):
-                st.write(pred['ai_analysis'])
+            with st.expander("🧠 Phân tích AI chi tiết", expanded=True):
+                ai_text = pred['ai_analysis']
+                
+                # Parse and format AI analysis
+                lines = ai_text.split('\n')
+                formatted_content = ""
+                
+                for line in lines:
+                    line = line.strip()
+                    if not line:
+                        continue
+                    
+                    # Format key-value pairs
+                    if ':' in line and any(key in line for key in ['PRICE_ADJUSTMENT', 'CONFIDENCE_ADJUSTMENT', 'AI_TREND', 'SUPPORT_ADJUSTMENT', 'RESISTANCE_ADJUSTMENT']):
+                        key, value = line.split(':', 1)
+                        key = key.strip()
+                        value = value.strip()
+                        
+                        # Color coding for different metrics
+                        if 'PRICE_ADJUSTMENT' in key:
+                            color = '#28a745' if '+' in value else '#dc3545'
+                            formatted_content += f"**📈 {key}:** <span style='color:{color}; font-weight:bold'>{value}</span>\n\n"
+                        elif 'CONFIDENCE_ADJUSTMENT' in key:
+                            color = '#28a745' if '+' in value else '#ffc107'
+                            formatted_content += f"**🎯 {key}:** <span style='color:{color}; font-weight:bold'>{value}</span>\n\n"
+                        elif 'AI_TREND' in key:
+                            color = '#28a745' if 'BULLISH' in value else '#dc3545' if 'BEARISH' in value else '#6c757d'
+                            icon = '📈' if 'BULLISH' in value else '📉' if 'BEARISH' in value else '➡️'
+                            formatted_content += f"**{icon} {key}:** <span style='color:{color}; font-weight:bold; font-size:1.1em'>{value}</span>\n\n"
+                        elif 'SUPPORT_ADJUSTMENT' in key:
+                            color = '#17a2b8'
+                            formatted_content += f"**🛡️ {key}:** <span style='color:{color}; font-weight:bold'>{value}</span>\n\n"
+                        elif 'RESISTANCE_ADJUSTMENT' in key:
+                            color = '#fd7e14'
+                            formatted_content += f"**⚡ {key}:** <span style='color:{color}; font-weight:bold'>{value}</span>\n\n"
+                    elif 'REASON:' in line:
+                        reason_text = line.replace('REASON:', '').strip()
+                        # Format the reason with better readability
+                        reason_text = reason_text.replace('. ', '. ')
+                        formatted_content += f"**💡 PHÂN TÍCH CHI TIẾT:** {reason_text}\n\n"
+                
+                # Display formatted content
+                st.markdown(formatted_content, unsafe_allow_html=True)
     elif pred.get('ai_error'):
         st.warning(f"⚠️ AI không khả dụng: {pred.get('ai_error')}")
+    
+    # Show risk-adjusted analysis if available
+    if 'risk_adjusted_analysis' in pred and pred['risk_adjusted_analysis']:
+        risk_analysis = pred['risk_adjusted_analysis']
+        
+        with st.expander("🎯 Phân tích theo hồ sơ rủi ro", expanded=True):
+            col1, col2, col3 = st.columns(3)
+            
+            with col1:
+                st.metric("Hồ sơ rủi ro", risk_analysis.get('risk_profile', 'N/A'))
+                st.metric("Điểm phù hợp", f"{risk_analysis.get('suitability_score', 0)}/100")
+                
+            with col2:
+                position = risk_analysis.get('position_sizing', {})
+                st.metric("Số cổ phiếu khuyến nghị", f"{position.get('recommended_shares', 0):,}")
+                st.metric("Số tiền đầu tư", f"{position.get('actual_investment', 0):,.0f} VND")
+                
+            with col3:
+                risk_mgmt = risk_analysis.get('risk_management', {})
+                st.metric("Stop Loss", f"{risk_mgmt.get('stop_loss_price', 0):,.0f}")
+                st.metric("Take Profit", f"{risk_mgmt.get('take_profit_price', 0):,.0f}")
+            
+            # Show personalized recommendations
+            if risk_analysis.get('recommendations'):
+                st.subheader("💡 Khuyến nghị cá nhân hóa:")
+                for rec in risk_analysis['recommendations']:
+                    st.write(f"• {rec}")
     
     # Show comprehensive prediction data if available
     if 'predictions' in pred and pred['predictions']:
@@ -294,8 +362,10 @@ def display_risk_assessment(risk):
         ai_model = risk.get('ai_model_used', 'Unknown')
         st.success(f"🤖 Phân tích rủi ro được tăng cường bởi AI: {ai_model}")
         if risk.get('ai_risk_analysis'):
-            with st.expander("🧠 Phân tích rủi ro AI chi tiết"):
-                st.write(risk['ai_risk_analysis'])
+            with st.expander("🧠 Phân tích rủi ro AI chi tiết", expanded=True):
+                ai_text = risk['ai_risk_analysis']
+                formatted_text = ai_text.replace('. ', '.\n\n').replace(': ', ':\n\n')
+                st.markdown(f"**🤖 AI Risk Analysis:**\n\n{formatted_text}", unsafe_allow_html=True)
     elif risk.get('ai_error'):
         st.warning(f"⚠️ AI không khả dụng: {risk.get('ai_error')}")
     
@@ -386,8 +456,10 @@ def display_investment_analysis(inv):
         ai_model = inv.get('ai_model_used', 'Unknown')
         st.success(f"🤖 Phân tích đầu tư được tăng cường bởi AI: {ai_model}")
         if inv.get('ai_investment_analysis'):
-            with st.expander("🧠 Phân tích đầu tư AI chi tiết"):
-                st.write(inv['ai_investment_analysis'])
+            with st.expander("🧠 Phân tích đầu tư AI chi tiết", expanded=True):
+                ai_text = inv['ai_investment_analysis']
+                formatted_text = ai_text.replace('. ', '.\n\n').replace(': ', ':\n\n')
+                st.markdown(f"**🤖 AI Investment Analysis:**\n\n{formatted_text}", unsafe_allow_html=True)
         if inv.get('enhanced_recommendation'):
             enhanced_rec = inv['enhanced_recommendation']
             if enhanced_rec != recommendation:
@@ -424,7 +496,7 @@ st.markdown("""
                         <i class="bi bi-graph-up"></i> 6 AI Agents
                     </span>
                     <span class="badge bg-light bg-opacity-25 text-white px-3 py-2">
-                        <i class="bi bi-robot"></i> Multi-AI (Gemini + ChatGPT)
+                        <i class="bi bi-robot"></i> Gemini AI
                     </span>
                     <span class="badge bg-light bg-opacity-25 text-white px-3 py-2">
                         <i class="bi bi-newspaper"></i> CrewAI Multi-Source News
@@ -468,14 +540,10 @@ with st.sidebar:
         help="Lấy API key tại: https://serper.dev/api-key"
     )
     
-    openai_key = st.text_input(
-        "Khóa API OpenAI (Tùy chọn)",
-        type="password",
-        placeholder="Nhập OpenAI API key...",
-        help="Lấy API key tại: https://platform.openai.com/api-keys"
-    )
+
+    st.info("ℹ️ Hệ thống chỉ sử dụng Gemini AI để tối ưu hiệu suất và chi phí")
     
-    col1, col2, col3 = st.columns(3)
+    col1, col2 = st.columns(2)
     with col1:
         if st.button("🔧 Cài đặt Gemini", use_container_width=True, type="primary"):
             if gemini_key:
@@ -488,20 +556,9 @@ with st.sidebar:
                 st.warning('⚠️ Vui lòng nhập khóa API!')
     
     with col2:
-        if st.button("🤖 Cài đặt OpenAI", use_container_width=True):
-            if openai_key:
-                if main_agent.set_openai_api_key(openai_key):
-                    st.success('✅ Cấu hình OpenAI thành công!')
-                    st.rerun()
-                else:
-                    st.error('❌ Khóa API không hợp lệ!')
-            else:
-                st.warning('⚠️ Vui lòng nhập khóa API OpenAI!')
-    
-    with col3:
-        if st.button("🚀 Cài đặt tất cả", use_container_width=True):
-            if gemini_key or openai_key:
-                if main_agent.set_crewai_keys(gemini_key, serper_key, openai_key):
+        if st.button("🚀 Cài đặt CrewAI", use_container_width=True):
+            if gemini_key:
+                if main_agent.set_crewai_keys(gemini_key, serper_key):
                     st.success('✅ Cấu hình tất cả AI thành công!')
                     st.rerun()
                 else:
@@ -613,8 +670,7 @@ with st.sidebar:
         st.markdown("🤖 **Nguồn dữ liệu**: CrewAI Real-time Data")
     else:
         st.markdown("📋 **Nguồn dữ liệu**: Static Fallback Data")
-        if main_agent.gemini_agent:
-            st.info("💡 **Tip**: Cấu hình CrewAI API keys để lấy dữ liệu thật")
+        
     
     selected_sector = st.selectbox("Chọn ngành", list(sectors.keys()))
     sector_stocks = sectors[selected_sector]
@@ -727,7 +783,13 @@ with tab1:
             with st.spinner("📈 Đang dự đoán giá..."):
                 loop = asyncio.new_event_loop()
                 asyncio.set_event_loop(loop)
-                pred = loop.run_until_complete(asyncio.to_thread(main_agent.price_predictor.predict_price, symbol))
+                # Get prediction with risk-adjusted parameters
+                time_horizon_clean = time_horizon.split(" (")[0]  # Remove the extra text like "(1-3 tháng)"
+                days = {"Ngắn hạn": 30, "Trung hạn": 90, "Dài hạn": 180}.get(time_horizon_clean, 90)
+                pred = loop.run_until_complete(asyncio.to_thread(
+                    main_agent.price_predictor.predict_price,
+                    symbol
+                ))
             display_price_prediction(pred)
     elif risk_btn:
         with results_container:
@@ -914,7 +976,7 @@ with tab3:
     if data_source == 'CrewAI':
         st.markdown("**🤖 Tin tức thật từ CrewAI + CafeF.vn**")
     else:
-        st.markdown("**📋 Tin tức mẫu (Cần cấu hình CrewAI cho tin tức thật)**")
+        st.markdown("**📋 Tin tức **")
     
     if st.button("🔄 Cập nhật", type="secondary"):
         with st.spinner("Đang lấy tin tức VN..."):
@@ -960,7 +1022,7 @@ with tab4:
         if data_source == 'CrewAI':
             st.success("🤖 CrewAI đã sẵn sàng - Tin tức sẽ là dữ liệu thật")
         else:
-            st.info("📋 Sử dụng tin tức mẫu - Cấu hình CrewAI để lấy tin tức thật")
+            st.info("📋 Sử dụng CrewAI để lấy tin tức thật")
     
         if st.button("🔄 Lấy tin tức mới nhất", type="primary"):
             with st.spinner(f"Đang lấy tin tức cho {symbol}..."):
