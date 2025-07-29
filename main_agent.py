@@ -305,12 +305,22 @@ class MainAgent:
         except Exception as e:
             return AgentErrorHandler.handle_prediction_error(symbol, e)
     
-    def _safe_get_ticker_news(self, symbol: str):
+    def _safe_get_ticker_news(self, symbol: str, limit: int = 10):
         """Safely get ticker news"""
         try:
-            return self.ticker_news.get_ticker_news(symbol)
+            return self.ticker_news.get_ticker_news(symbol, limit)
         except Exception as e:
             return AgentErrorHandler.handle_news_error(symbol, e)
+    
+    @handle_async_errors(default_return={"error": "Lỗi hệ thống khi lấy tin tức cổ phiếu"})
+    async def get_ticker_news_enhanced(self, symbol: str, limit: int = 15):
+        """Get enhanced ticker news with detailed stats"""
+        try:
+            result = await run_in_threadpool(self._safe_get_ticker_news, symbol, limit)
+            return result
+        except Exception as e:
+            logger.error(f"Ticker news enhanced error: {e}")
+            return {"error": f"Lỗi lấy tin tức cổ phiếu {symbol}: {str(e)}"}
     
     def _safe_get_investment_analysis(self, symbol: str):
         """Safely get investment analysis"""

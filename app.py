@@ -87,6 +87,11 @@ def init_system():
     main_agent = MainAgent(vn_api)
     return main_agent, vn_api
 
+# Clear cache and reinitialize to ensure updated methods are available
+if 'main_agent_initialized' not in st.session_state:
+    st.cache_resource.clear()
+    st.session_state.main_agent_initialized = True
+
 main_agent, vn_api = init_system()
 # Các hàm hiển thị phân tích
 async def display_comprehensive_analysis(result, symbol, time_horizon="Trung hạn", risk_tolerance=50):
@@ -131,21 +136,18 @@ async def display_comprehensive_analysis(result, symbol, time_horizon="Trung h�
     else:
         st.info("🔴 **Chiến lược mạo hiểm:** Tập trung vào tăng trưởng cao")
     
-    col1, col2, col3 = st.columns(3)
+    # Analysis tabs
+    tab1, tab2= st.tabs(["📈 Dự đoán giá", "⚠️ Đánh giá rủi ro"])
     
-    with col1:
+    with tab1:
         if result.get('price_prediction'):
             display_price_prediction(result['price_prediction'])
-        if result.get('investment_analysis'):
-            display_investment_analysis(result['investment_analysis'])
     
-    with col2:
+    with tab2:
         if result.get('risk_assessment'):
             display_risk_assessment(result['risk_assessment'])
             
-    with col3:
-        if result.get('investment_expert'):
-            display_investment_analysis(result['investment_expert'])
+   
 
 def display_price_prediction(pred):
     if pred.get('error'):
@@ -566,6 +568,12 @@ with st.sidebar:
             else:
                 st.error('❌ Cần ít nhất một khóa API!')
     
+    # Force refresh button
+    if st.button("🔄 Làm mới dữ liệu", use_container_width=True, help="Xóa cache và tải lại symbols từ CrewAI"):
+        main_agent.vn_api.clear_symbols_cache()
+        st.success('✅ Đã xóa cache - Reload trang để lấy dữ liệu mới!')
+        st.rerun()
+    
     st.divider()
     
     # Bootstrap AI Agents Status
@@ -627,8 +635,8 @@ with st.sidebar:
     else:
         risk_label = "🔴 Mạo hiểm"
     
-    st.info(f"**Hồ sơ:** {risk_label} ({risk_tolerance}%) | **Số tiền:** {investment_amount:,} VND")
-    
+    st.info(f"**Hồ sơ:** {risk_label} ({risk_tolerance}%) | **Số tiền:** {investment_amount:,} VND | **Thời gian:** {time_horizon} Tháng")
+
     st.divider()
     
     # Stock Selection
@@ -652,6 +660,12 @@ with st.sidebar:
             else:
                 data_source = 'Static'
                 st.info(f'📋 {len(symbols)} mã cổ phiếu tĩnh (Fallback)')
+                
+                # Show why CrewAI is not working
+                if not main_agent.gemini_agent:
+                    st.warning("⚠️ **Để lấy dữ liệu thật**: Cấu hình Gemini API key trong sidebar")
+                elif not (main_agent.vn_api.crewai_collector and main_agent.vn_api.crewai_collector.enabled):
+                    st.warning("⚠️ **CrewAI chưa khả dụng**: Kiểm tra cấu hình API keys")
         else:
             st.error("❌ Không thể tải danh sách cổ phiếu")
         
@@ -724,15 +738,23 @@ def show_loading(message):
     </div>
     """
 
-def create_news_card(title, summary, published, source, link=None):
-    link_html = f'<a href="{link}" target="_blank" style="color: #2a5298; text-decoration: none;">🔗 Đọc thêm</a>' if link else ""
+def create_news_card(title, summary, published, source, link=None, priority=False):
+    priority_badge = '<span style="background: #ff6b6b; color: white; padding: 0.2rem 0.5rem; border-radius: 12px; font-size: 0.7rem; font-weight: bold; margin-left: 0.5rem;">🔥 PRIORITY</span>' if priority else ''
+    link_html = f'<a href="{link}" target="_blank" style="background: #2a5298; color: white; padding: 0.5rem 1rem; border-radius: 6px; text-decoration: none; font-size: 0.9rem;">🔗 Đọc chi tiết</a>' if link else '<span style="color: #95a5a6;">Không có link</span>'
+    border_color = "#ff6b6b" if priority else "#2a5298"
     
     return f"""
-    <div class="news-card">
-        <div class="news-title">{title}</div>
-        <div class="news-meta">{source} • {published}</div>
-        <div class="news-summary">{summary}</div>
-        <div style="margin-top: 1rem;">{link_html}</div>
+    <div class="news-card" style="border-left: 4px solid {border_color};">
+        <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 0.5rem;">
+            <div class="news-title" style="flex: 1; font-size: 1.1rem; font-weight: 600; color: #2c3e50;">{title}</div>
+            {priority_badge}
+        </div>
+        <div class="news-meta" style="color: #7f8c8d; font-size: 0.9rem; margin-bottom: 0.8rem;">📰 {source} • 📅 {published}</div>
+        <div class="news-summary" style="color: #34495e; line-height: 1.5; margin-bottom: 1rem;">{summary}</div>
+        <div style="display: flex; justify-content: space-between; align-items: center;">
+            {link_html}
+            <span style="color: #95a5a6; font-size: 0.8rem;">Source: {source}</span>
+        </div>
     </div>
     """
 
@@ -929,10 +951,34 @@ with tab3:
         st.markdown("🔄 **Dữ liệu được cập nhật từ**: Gemini AI + Real Market Data")
     else:
         st.info(f"📋 Hiển thị {len(symbols)} cổ phiếu tĩnh (Fallback)")
+        
+        # Debug info for why CrewAI is not working
+        debug_info = []
         if not main_agent.gemini_agent:
-            st.warning("⚠️ **Để lấy dữ liệu thật**: Cấu hình Gemini API key trong sidebar")
-        elif not (main_agent.vn_api.crewai_collector and main_agent.vn_api.crewai_collector.enabled):
-            st.warning("⚠️ **CrewAI chưa khả dụng**: Kiểm tra cấu hình API keys")
+            debug_info.append("❌ Gemini AI chưa được cấu hình")
+        else:
+            debug_info.append("✅ Gemini AI đã sẵn sàng")
+            
+        if not (main_agent.vn_api.crewai_collector and main_agent.vn_api.crewai_collector.enabled):
+            debug_info.append("❌ CrewAI collector chưa khả dụng")
+        else:
+            debug_info.append("✅ CrewAI collector đã sẵn sàng")
+            
+        with st.expander("🔍 Debug thông tin CrewAI"):
+            for info in debug_info:
+                st.write(info)
+            
+            # Show cache status
+            if hasattr(main_agent.vn_api, '_available_symbols_cache') and main_agent.vn_api._available_symbols_cache:
+                st.write(f"💾 Cache: {len(main_agent.vn_api._available_symbols_cache)} symbols")
+            else:
+                st.write("💾 Cache: Trống")
+                
+            # Show CrewAI collector status
+            if main_agent.vn_api.crewai_collector:
+                st.write(f"🤖 CrewAI Enabled: {main_agent.vn_api.crewai_collector.enabled}")
+            else:
+                st.write("🤖 CrewAI: Không có")
     
     # Group by sector
     sectors = {}
@@ -973,10 +1019,11 @@ with tab3:
     st.markdown("---")  # Separator
     st.subheader("📰 Tin tức thị trường Việt Nam")
     
-    if data_source == 'CrewAI':
-        st.markdown("**🤖 Tin tức thật từ CrewAI + CafeF.vn**")
+    # Show CrewAI status for news
+    if main_agent.vn_api.crewai_collector and main_agent.vn_api.crewai_collector.enabled:
+        st.markdown("**🤖 CrewAI sẵn sàng - Tin tức sẽ là dữ liệu thật**")
     else:
-        st.markdown("**📋 Tin tức **")
+        st.markdown("**📋 Tin tức fallback - Cấu hình CrewAI để lấy tin thật**")
     
     if st.button("🔄 Cập nhật", type="secondary"):
         with st.spinner("Đang lấy tin tức VN..."):
@@ -994,8 +1041,8 @@ with tab3:
                     st.success(f"✅ Tìm thấy {news_count} tin tức thật từ {source}")
                 elif 'CafeF' in source:
                     st.info(f"ℹ️ Tìm thấy {news_count} tin tức từ {source}")
-                else:
-                    st.warning(f"⚠️ Sử dụng {news_count} tin tức mẫu từ {source}")
+                #else:
+                    #st.warning(f"⚠️ Sử dụng {news_count} tin tức mẫu từ {source}")
                 
                 for i, news in enumerate(market_news.get('news', []), 1):
                     with st.expander(f"🌍 {i}. {news.get('title', 'Không có tiêu đề')}"):
@@ -1019,31 +1066,101 @@ with tab4:
         st.warning("⚠️ Vui lòng chọn một cổ phiếu từ thanh bên")
     else:
         # Show CrewAI status for news
-        if data_source == 'CrewAI':
-            st.success("🤖 CrewAI đã sẵn sàng - Tin tức sẽ là dữ liệu thật")
+        if main_agent.vn_api.crewai_collector and main_agent.vn_api.crewai_collector.enabled:
+            st.success(f"🤖 CrewAI sẵn sàng - Tin tức về {symbol} sẽ là dữ liệu thật")
         else:
-            st.info("📋 Sử dụng CrewAI để lấy tin tức thật")
+            st.info(f"📋 Cấu hình CrewAI để lấy tin tức thật về {symbol}")
     
-        if st.button("🔄 Lấy tin tức mới nhất", type="primary"):
-            with st.spinner(f"Đang lấy tin tức cho {symbol}..."):
+        # News limit selector
+        news_limit = st.selectbox(
+            f"📊 Số lượng bài báo về {symbol}:",
+            [10, 15, 20, 25, 30],
+            index=2,  # Default to 20
+            help=f"Chọn số lượng bài báo về {symbol} muốn crawl"
+        )
+        
+        if st.button(f"🔄 Lấy tin tức {symbol}", type="primary"):
+            with st.spinner(f"Đang crawl {news_limit} tin tức về {symbol}..."):
                 loop = asyncio.new_event_loop()
                 asyncio.set_event_loop(loop)
-                news_data = loop.run_until_complete(asyncio.to_thread(main_agent.ticker_news.get_ticker_news, symbol, 10))
+                ticker_news = loop.run_until_complete(main_agent.get_ticker_news_enhanced(symbol, news_limit))
                 loop.close()
                 
-                if news_data.get('error'):
-                    st.error(f"❌ {news_data['error']}")
+                if ticker_news.get('error'):
+                    st.error(f"❌ {ticker_news['error']}")
                 else:
-                    st.success(f"✅ Tìm thấy {news_data.get('news_count', 0)} bài báo")
+                    # Display results similar to market news
+                    news_count = ticker_news.get('news_count', 0)
+                    data_source = ticker_news.get('data_source', 'Không rõ')
+                    crawl_stats = ticker_news.get('crawl_stats', {})
                     
-                    for i, news in enumerate(news_data.get('news', []), 1):
-                        st.markdown(create_news_card(
-                            news.get('title', 'Không có tiêu đề'),
-                            news.get('summary', 'Không có tóm tắt'),
-                            news.get('published', 'Không rõ'),
-                            news.get('publisher', 'Không rõ'),
-                            news.get('link')
-                        ), unsafe_allow_html=True)
+                    # Success message with source info
+                    if 'CrewAI' in data_source:
+                        st.success(f"✅ Tìm thấy {news_count} tin tức thật về {symbol} từ {data_source}")
+                        if crawl_stats:
+                            stats_text = " | ".join([f"{source}: {count}" for source, count in crawl_stats.items()])
+                            st.info(f"📊 Chi tiết crawl: {stats_text}")
+                    elif 'CafeF' in data_source or 'VietStock' in data_source:
+                        st.info(f"ℹ️ Tìm thấy {news_count} tin tức về {symbol} từ {data_source}")
+                    else:
+                        st.warning(f"⚠️ Sử dụng {news_count} tin tức mẫu về {symbol} từ {data_source}")
+                    
+                    # AI enhancement display
+                    if ticker_news.get('ai_enhanced'):
+                        ai_model = ticker_news.get('ai_model_used', 'Unknown')
+                        sentiment = ticker_news.get('news_sentiment', 'NEUTRAL')
+                        impact_score = ticker_news.get('impact_score', 5.0)
+                        
+                        sentiment_color = "#28a745" if sentiment == "POSITIVE" else "#dc3545" if sentiment == "NEGATIVE" else "#ffc107"
+                        sentiment_icon = "📈" if sentiment == "POSITIVE" else "📉" if sentiment == "NEGATIVE" else "➡️"
+                        
+                        st.markdown(f"""
+                        <div style="background: {sentiment_color}22; border-left: 4px solid {sentiment_color}; padding: 1rem; border-radius: 8px; margin: 1rem 0;">
+                            <strong>🤖 AI Analysis for {symbol} ({ai_model}):</strong><br>
+                            {sentiment_icon} <strong>Sentiment:</strong> {sentiment}<br>
+                            ⚡ <strong>Impact Score:</strong> {impact_score}/10
+                        </div>
+                        """, unsafe_allow_html=True)
+                        
+                        if ticker_news.get('ai_news_analysis'):
+                            with st.expander(f"🧠 Phân tích AI chi tiết cho {symbol}", expanded=False):
+                                st.markdown(ticker_news['ai_news_analysis'])
+                    
+                    # Display news in expandable format like market news
+                    for i, news in enumerate(ticker_news.get('news', []), 1):
+                        title = news.get('title', 'Không có tiêu đề')
+                        is_priority = symbol.upper() in title.upper()
+                        priority_icon = "🔥" if is_priority else "📰"
+                        
+                        with st.expander(f"{priority_icon} {i}. {title}"):
+                            col1, col2 = st.columns([3, 1])
+                            with col1:
+                                summary = news.get('summary', 'Không có tóm tắt')
+                                st.write(f"**Tóm tắt:** {summary}")
+                                if news.get('link'):
+                                    st.markdown(f"[🔗 Đọc thêm]({news['link']})")
+                            with col2:
+                                publisher = news.get('publisher', 'N/A')
+                                published = news.get('published', 'N/A')
+                                st.write(f"**Nguồn:** {publisher}")
+                                st.write(f"**Ngày:** {published}")
+                                
+                                # Show data type
+                                if 'CrewAI' in ticker_news.get('data_source', ''):
+                                    source_type = "🤖 Real"
+                                elif 'CafeF' in data_source or 'VietStock' in data_source:
+                                    source_type = "ℹ️ Crawled"
+                                else:
+                                    source_type = "📋 Sample"
+                                st.write(f"**Loại:** {source_type}")
+                                
+                                # Priority indicator
+                                if is_priority:
+                                    st.write(f"**ƯU tiên:** 🔥 Có chứa {symbol}")
+                                else:
+                                    st.write(f"**ƯU tiên:** ➡️ Liên quan")
+                                
+                                st.write(f"**Chỉ mục:** #{i}")
 
 # Tab 5: Company Info
 with tab5:

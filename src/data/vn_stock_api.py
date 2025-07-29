@@ -514,6 +514,10 @@ class VNStockAPI:
             import src.data.crewai_collector as crewai_module
             crewai_module._collector_instance = None
             self.crewai_collector = get_crewai_collector(gemini_api_key, serper_api_key)
+            
+            # Clear cache to force fresh data
+            self.clear_symbols_cache()
+            
             logger.info(f"✅ CrewAI keys updated - Enabled: {self.crewai_collector.enabled}")
             return self.crewai_collector.enabled
         return False
@@ -675,22 +679,25 @@ class VNStockAPI:
         Lấy danh sách symbols từ CrewAI real data thay vì vnstock
         """
         try:
-            # Check cache first
-            if hasattr(self, '_available_symbols_cache') and self._available_symbols_cache:
-                return self._available_symbols_cache
-            
             # Use CrewAI for real symbols if available
             if self.crewai_collector and self.crewai_collector.enabled:
                 logger.info("🤖 Getting stock symbols from CrewAI real data")
-                symbols = await self.crewai_collector.get_available_symbols()
-                if symbols and len(symbols) >= 20:  # Ensure we got real data
-                    logger.info(f"✅ Loaded {len(symbols)} symbols from CrewAI")
-                    # Mark as real data
-                    for symbol in symbols:
-                        symbol['data_source'] = 'CrewAI'
-                    # Cache the result
-                    self._available_symbols_cache = symbols
-                    return symbols
+                try:
+                    symbols = await self.crewai_collector.get_available_symbols()
+                    if symbols and len(symbols) >= 10:  # Lower threshold
+                        logger.info(f"✅ Loaded {len(symbols)} symbols from CrewAI")
+                        # Mark as real data
+                        for symbol in symbols:
+                            symbol['data_source'] = 'CrewAI'
+                        # Cache the result
+                        self._available_symbols_cache = symbols
+                        return symbols
+                    else:
+                        logger.warning(f"⚠️ CrewAI returned {len(symbols) if symbols else 0} symbols, using fallback")
+                except Exception as crewai_error:
+                    logger.error(f"❌ CrewAI symbols failed: {crewai_error}")
+            else:
+                logger.info("📋 CrewAI not available, using static symbols")
             
             # Fallback to enhanced static list
             logger.info("📋 Using enhanced static symbols list")
@@ -713,9 +720,20 @@ class VNStockAPI:
     
     def is_using_real_data(self) -> bool:
         """Check if using real CrewAI data"""
-        return (self.crewai_collector and 
-                self.crewai_collector.enabled and 
-                self.crewai_collector._symbols_cache is not None)
+        if not (self.crewai_collector and self.crewai_collector.enabled):
+            return False
+        
+        # Check if we have cached symbols from CrewAI
+        if hasattr(self, '_available_symbols_cache') and self._available_symbols_cache:
+            return any(s.get('data_source') == 'CrewAI' for s in self._available_symbols_cache)
+        
+        return False
+    
+    def clear_symbols_cache(self):
+        """Clear symbols cache to force refresh"""
+        if hasattr(self, '_available_symbols_cache'):
+            self._available_symbols_cache = None
+        logger.info("🔄 Symbols cache cleared")
     
     def _get_static_symbols(self) -> List[Dict[str, str]]:
         """Enhanced static symbols list with more VN stocks"""
