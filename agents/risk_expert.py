@@ -390,47 +390,37 @@ class RiskExpert:
     def _get_ai_risk_analysis(self, symbol: str, base_analysis: dict):
         """Get AI-enhanced risk analysis with REAL adjustments"""
         try:
-            # Prepare context for AI analysis
+            # Prepare context for AI analysis with advice request
             context = f"""
-Phân tích rủi ro chuyên sâu cho cổ phiếu {symbol}:
+Bạn là chuyên gia quản lý rủi ro. Hãy phân tích rủi ro cổ phiếu {symbol}:
 
 DỮ LIỆU RỦI RO:
-- Mức rủi ro hiện tại: {base_analysis.get('risk_level', 'N/A')}
-- Độ biến động (Volatility): {base_analysis.get('volatility', 'N/A')}%
-- Max Drawdown: {base_analysis.get('max_drawdown', 'N/A')}%
-- Beta: {base_analysis.get('beta', 'N/A')}
-- VaR 95%: {base_analysis.get('var_95', 'N/A')}%
-- Sharpe Ratio: {base_analysis.get('sharpe_ratio', 'N/A')}
-- Risk Score: {base_analysis.get('risk_score', 'N/A')}/10
-- Thị trường: {base_analysis.get('market', 'N/A')}
-- Benchmark: {base_analysis.get('benchmark', 'N/A')}
+- Mức rủi ro: {base_analysis.get('risk_level', 'MEDIUM')}
+- Volatility: {base_analysis.get('volatility', 25)}%
+- Max Drawdown: {base_analysis.get('max_drawdown', -15)}%
+- Beta: {base_analysis.get('beta', 1.0)}
+- VaR 95%: {base_analysis.get('var_95', 8)}%
+- Risk Score: {base_analysis.get('risk_score', 5)}/10
 
-Hãy đưa ra:
-1. Mức rủi ro AI (LOW/MEDIUM/HIGH/VERY_HIGH)
-2. Điều chỉnh volatility (% thay đổi)
-3. Điều chỉnh VaR 95% (% thay đổi)
-4. Điều chỉnh Sharpe ratio (giá trị mới)
-5. Risk score AI (1-10)
-6. Khuyến nghị position sizing (% của portfolio)
-7. Stop-loss khuyến nghị (%)
-8. Lý do chi tiết
+YÊU CẦU:
+1. Đưa ra lời khuyên quản lý rủi ro cụ thể
+2. Giải thích cách kiểm soát rủi ro
+3. Khuyến nghị về tỷ trọng đầu tư và stop-loss
 
-Trả lời theo format:
-AI_RISK_LEVEL: [LOW/MEDIUM/HIGH/VERY_HIGH]
-VOLATILITY_ADJUSTMENT: [+/-]X%
-VAR_ADJUSTMENT: [+/-]Y%
-SHARPE_RATIO: Z
-RISK_SCORE: W
-POSITION_SIZE: P%
-STOP_LOSS: S%
-REASON: [lý do chi tiết]
+Trả lời ngắn gọn, thực tế cho nhà đầu tư Việt Nam.
+
+ADVICE: [lời khuyên quản lý rủi ro]
+REASONING: [lý do và cách thực hiện]
 """
             
             # Get AI analysis
-            ai_result = self.ai_agent.generate_with_fallback(context, 'risk_assessment', max_tokens=700)
+            ai_result = self.ai_agent.generate_with_fallback(context, 'risk_assessment', max_tokens=400)
             
             if ai_result['success']:
-                # Parse AI response for actual adjustments
+                # Parse AI response for advice and reasoning
+                ai_advice, ai_reasoning = self._parse_ai_advice(ai_result['response'])
+                
+                # Parse AI response for actual adjustments (fallback to existing method)
                 ai_adjustments = self._parse_ai_risk_adjustments(ai_result['response'])
                 
                 # Apply AI adjustments to base analysis
@@ -440,6 +430,8 @@ REASON: [lý do chi tiết]
                     'ai_risk_analysis': ai_result['response'],
                     'ai_model_used': ai_result['model_used'],
                     'ai_enhanced': True,
+                    'ai_advice': ai_advice,
+                    'ai_reasoning': ai_reasoning,
                     'ai_adjustments': ai_adjustments,
                     'enhanced_risk_level': ai_adjustments.get('risk_level', base_analysis.get('risk_level', 'MEDIUM')),
                     'ai_volatility': adjusted_analysis.get('ai_volatility', base_analysis.get('volatility')),
@@ -509,6 +501,40 @@ REASON: [lý do chi tiết]
             print(f"⚠️ AI risk adjustment parsing failed: {e}")
             
         return adjustments
+    
+    def _parse_ai_advice(self, ai_response: str):
+        """Parse AI response for advice and reasoning"""
+        import re
+        
+        advice = ""
+        reasoning = ""
+        
+        try:
+            # Extract advice
+            advice_match = re.search(r'ADVICE:\s*(.+?)(?=\n|REASONING:|$)', ai_response, re.IGNORECASE | re.DOTALL)
+            if advice_match:
+                advice = advice_match.group(1).strip()
+            
+            # Extract reasoning
+            reasoning_match = re.search(r'REASONING:\s*(.+?)(?=\n\n|$)', ai_response, re.IGNORECASE | re.DOTALL)
+            if reasoning_match:
+                reasoning = reasoning_match.group(1).strip()
+            
+            # Fallback: use entire response if no structured format
+            if not advice and not reasoning:
+                lines = ai_response.strip().split('\n')
+                if len(lines) >= 2:
+                    advice = lines[0]
+                    reasoning = ' '.join(lines[1:])
+                else:
+                    advice = ai_response[:200] + "..." if len(ai_response) > 200 else ai_response
+                    
+        except Exception as e:
+            print(f"⚠️ Risk advice parsing failed: {e}")
+            advice = "Cần quản lý rủi ro thận trọng"
+            reasoning = "Dựa trên phân tích các chỉ số rủi ro hiện tại"
+            
+        return advice, reasoning
     
     def _apply_ai_risk_adjustments(self, base_analysis: dict, ai_adjustments: dict):
         """Apply AI adjustments to base risk analysis"""

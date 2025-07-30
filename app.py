@@ -162,6 +162,10 @@ def display_price_prediction(pred):
     data_source = pred.get('data_source', 'Unknown')
     change_percent = pred.get('change_percent', 0)
     
+    # AI-enhanced advice and reasoning
+    ai_advice = pred.get('ai_advice', '')
+    ai_reasoning = pred.get('ai_reasoning', '')
+    
     # Technical indicators from agent
     tech_indicators = pred.get('technical_indicators', {})
     rsi = tech_indicators.get('rsi', 50)
@@ -222,83 +226,145 @@ def display_price_prediction(pred):
     elif 'VCI_Real' in data_source:
         st.info("ℹ️ Dự đoán sử dụng dữ liệu thật từ CrewAI + CafeF + Vnstock")
     
-    # Show AI enhancement info if available
-    if pred.get('ai_enhanced'):
-        ai_model = pred.get('ai_model_used', 'Unknown')
-        st.success(f"🤖 Phân tích được tăng cường bởi AI: {ai_model}")
-        if pred.get('ai_analysis'):
-            with st.expander("🧠 Phân tích AI chi tiết", expanded=True):
-                ai_text = pred['ai_analysis']
-                
-                # Parse and format AI analysis
-                lines = ai_text.split('\n')
-                formatted_content = ""
-                
-                for line in lines:
-                    line = line.strip()
-                    if not line:
-                        continue
-                    
-                    # Format key-value pairs
-                    if ':' in line and any(key in line for key in ['PRICE_ADJUSTMENT', 'CONFIDENCE_ADJUSTMENT', 'AI_TREND', 'SUPPORT_ADJUSTMENT', 'RESISTANCE_ADJUSTMENT']):
-                        key, value = line.split(':', 1)
-                        key = key.strip()
-                        value = value.strip()
-                        
-                        # Color coding for different metrics
-                        if 'PRICE_ADJUSTMENT' in key:
-                            color = '#28a745' if '+' in value else '#dc3545'
-                            formatted_content += f"**📈 {key}:** <span style='color:{color}; font-weight:bold'>{value}</span>\n\n"
-                        elif 'CONFIDENCE_ADJUSTMENT' in key:
-                            color = '#28a745' if '+' in value else '#ffc107'
-                            formatted_content += f"**🎯 {key}:** <span style='color:{color}; font-weight:bold'>{value}</span>\n\n"
-                        elif 'AI_TREND' in key:
-                            color = '#28a745' if 'BULLISH' in value else '#dc3545' if 'BEARISH' in value else '#6c757d'
-                            icon = '📈' if 'BULLISH' in value else '📉' if 'BEARISH' in value else '➡️'
-                            formatted_content += f"**{icon} {key}:** <span style='color:{color}; font-weight:bold; font-size:1.1em'>{value}</span>\n\n"
-                        elif 'SUPPORT_ADJUSTMENT' in key:
-                            color = '#17a2b8'
-                            formatted_content += f"**🛡️ {key}:** <span style='color:{color}; font-weight:bold'>{value}</span>\n\n"
-                        elif 'RESISTANCE_ADJUSTMENT' in key:
-                            color = '#fd7e14'
-                            formatted_content += f"**⚡ {key}:** <span style='color:{color}; font-weight:bold'>{value}</span>\n\n"
-                    elif 'REASON:' in line:
-                        reason_text = line.replace('REASON:', '').strip()
-                        # Format the reason with better readability
-                        reason_text = reason_text.replace('. ', '. ')
-                        formatted_content += f"**💡 PHÂN TÍCH CHI TIẾT:** {reason_text}\n\n"
-                
-                # Display formatted content
-                st.markdown(formatted_content, unsafe_allow_html=True)
-    elif pred.get('ai_error'):
-        st.warning(f"⚠️ AI không khả dụng: {pred.get('ai_error')}")
+    # AI-Enhanced Advice Section - ALWAYS show with improved display
+    st.markdown("### 🤖 Lời khuyên từ AI")
     
-    # Show risk-adjusted analysis if available
-    if 'risk_adjusted_analysis' in pred and pred['risk_adjusted_analysis']:
-        risk_analysis = pred['risk_adjusted_analysis']
+    # Get AI advice (with fallback)
+    display_advice = ai_advice or "Theo dõi các chỉ báo kỹ thuật để đưa ra quyết định"
+    display_reasoning = ai_reasoning or "Dựa trên phân tích kỹ thuật cơ bản"
+    
+    # Display AI advice in a professional card with better styling
+    advice_color = '#28a745' if 'mua' in display_advice.lower() or 'buy' in display_advice.lower() else '#dc3545' if 'bán' in display_advice.lower() or 'sell' in display_advice.lower() else '#ffc107'
+    advice_icon = '🚀' if 'mua' in display_advice.lower() or 'buy' in display_advice.lower() else '📉' if 'bán' in display_advice.lower() or 'sell' in display_advice.lower() else '📊'
+    
+    st.markdown(f"""
+    <div style="background: {advice_color}22; border-left: 4px solid {advice_color}; padding: 1.5rem; border-radius: 8px; margin: 1rem 0;">
+        <h4 style="color: {advice_color}; margin-bottom: 1rem;">{advice_icon} Lời khuyên dự đoán giá</h4>
+        <p style="font-size: 1.1rem; margin-bottom: 1rem; font-weight: 500;">{display_advice}</p>
+        <p style="color: #666; font-style: italic;"><strong>Lý do:</strong> {display_reasoning}</p>
+    </div>
+    """, unsafe_allow_html=True)
+    
+    # Show AI enhancement status
+    ai_model = pred.get('ai_model_used', 'Không có AI')
+    if pred.get('ai_enhanced'):
+        st.success(f"🤖 Dự đoán được tăng cường bởi AI: {ai_model}")
+    else:
+        ai_error = pred.get('ai_error', 'Không cấu hình')
+        # Clean up error messages for better UX
+        if "429" in ai_error or "quota" in ai_error.lower():
+            st.warning("⚠️ AI đã hết quota - Sử dụng phân tích kỹ thuật nâng cao")
+        elif "503" in ai_error or "overloaded" in ai_error.lower():
+            st.warning("⚠️ AI đang quá tải - Sử dụng phân tích kỹ thuật nâng cao")
+        elif "timeout" in ai_error.lower():
+            st.info("⏱️ AI phản hồi chậm - Sử dụng phân tích dự phòng thông minh")
+        elif "not configured" in ai_error.lower() or "không cấu hình" in ai_error.lower():
+            st.info("🤖 Phân tích dự đoán cơ bản - Chưa cấu hình AI")
+        else:
+            st.info("🤖 Phân tích dự đoán cơ bản - AI không khả dụng")
+    
+    # Always show detailed analysis section
+    with st.expander("🧠 Phân tích AI chi tiết", expanded=False):
+        if pred.get('ai_analysis'):
+            ai_text = pred['ai_analysis']
+            
+            # Enhanced formatting for AI analysis
+            if 'ADVICE:' in ai_text and 'REASONING:' in ai_text:
+                # Structured AI response
+                st.markdown("**🤖 Phân tích có cấu trúc từ AI:**")
+                formatted_text = ai_text.replace('ADVICE:', '**📋 KHUYẾN NGHỊ:**').replace('REASONING:', '**🔍 PHÂN TÍCH:**')
+                st.markdown(formatted_text)
+            else:
+                # Unstructured AI response
+                st.markdown("**🤖 Phân tích tự do từ AI:**")
+                st.markdown(ai_text)
+        else:
+            # Show enhanced fallback analysis using real data from sidebar
+            st.markdown("**📊 Phân tích kỹ thuật nâng cao:**")
+            
+            # Get risk profile from sidebar data (use current values)
+            # risk_tolerance, time_horizon, investment_amount are already available from main scope
+            
+            risk_profile = "Thận trọng" if risk_tolerance <= 30 else "Cân bằng" if risk_tolerance <= 70 else "Mạo hiểm"
+            time_horizon_clean = time_horizon.split(" (")[0] if "(" in time_horizon else time_horizon
+            
+            st.markdown(f"""
+            **📈 Dữ liệu kỹ thuật:**
+            - Giá hiện tại: {current_price:,.2f} VND
+            - Dự đoán: {predicted_price:,.2f} VND ({change_percent:+.1f}%)
+            - Xu hướng: {trend.upper()}
+            - RSI: {rsi:.1f} ({"Quá mua" if rsi > 70 else "Quá bán" if rsi < 30 else "Trung tính"})
+            - Độ tin cậy: {confidence:.1f}%
+            
+            **🎯 Phân tích theo hồ sơ rủi ro:**
+            - Hồ sơ nhà đầu tư: {risk_profile} ({risk_tolerance}%)
+            - Thời gian đầu tư: {time_horizon_clean}
+            - Số tiền đầu tư: {investment_amount:,} VND
+            
+            **💡 Khuyến nghị thông minh:**
+            Với hồ sơ {risk_profile.lower()} và khung thời gian {time_horizon_clean.lower()}, 
+            {symbol} đang cho thấy xu hướng {trend}. RSI {rsi:.1f} cho thấy cổ phiếu 
+            {"có thể điều chỉnh" if rsi > 70 else "có cơ hội phục hồi" if rsi < 30 else "ở trạng thái cân bằng"}.
+            
+            **⚠️ Lưu ý quan trọng:**
+            Đây là phân tích kỹ thuật cơ bản. Nhà đầu tư nên kết hợp với phân tích cơ bản 
+            và tin tức thị trường để đưa ra quyết định cuối cùng.
+            """)
+    
+    # AI error handling is now integrated into the status display above
+    
+    # Show risk-adjusted analysis using REAL sidebar data
+    with st.expander("🎯 Phân tích theo hồ sơ rủi ro", expanded=True):
+        # Get current data from sidebar (passed from main scope)
+        sidebar_risk_tolerance = risk_tolerance
+        sidebar_time_horizon = time_horizon  
+        sidebar_investment_amount = investment_amount
         
-        with st.expander("🎯 Phân tích theo hồ sơ rủi ro", expanded=True):
-            col1, col2, col3 = st.columns(3)
+        # Calculate risk profile from sidebar data
+        if sidebar_risk_tolerance <= 30:
+            risk_profile = "Thận trọng"
+            max_position = 0.05  # 5%
+            stop_loss_pct = 5
+        elif sidebar_risk_tolerance <= 70:
+            risk_profile = "Cân bằng"
+            max_position = 0.10  # 10%
+            stop_loss_pct = 8
+        else:
+            risk_profile = "Mạo hiểm"
+            max_position = 0.20  # 20%
+            stop_loss_pct = 12
+        
+        # Calculate position sizing from sidebar data
+        max_investment = sidebar_investment_amount * max_position
+        recommended_shares = int(max_investment / current_price) if current_price > 0 else 0
+        actual_investment = recommended_shares * current_price
+        stop_loss_price = current_price * (1 - stop_loss_pct / 100)
+        take_profit_price = current_price * 1.15  # 15% target
+        
+        col1, col2, col3 = st.columns(3)
+        
+        with col1:
+            st.metric("Hồ sơ rủi ro", f"{risk_profile} ({sidebar_risk_tolerance}%)")
+            st.metric("Thời gian đầu tư", sidebar_time_horizon.split(' (')[0])
             
-            with col1:
-                st.metric("Hồ sơ rủi ro", risk_analysis.get('risk_profile', 'N/A'))
-                st.metric("Điểm phù hợp", f"{risk_analysis.get('suitability_score', 0)}/100")
-                
-            with col2:
-                position = risk_analysis.get('position_sizing', {})
-                st.metric("Số cổ phiếu khuyến nghị", f"{position.get('recommended_shares', 0):,}")
-                st.metric("Số tiền đầu tư", f"{position.get('actual_investment', 0):,.0f} VND")
-                
-            with col3:
-                risk_mgmt = risk_analysis.get('risk_management', {})
-                st.metric("Stop Loss", f"{risk_mgmt.get('stop_loss_price', 0):,.0f}")
-                st.metric("Take Profit", f"{risk_mgmt.get('take_profit_price', 0):,.0f}")
+        with col2:
+            st.metric("Số cổ phiếu khuyến nghị", f"{recommended_shares:,}")
+            st.metric("Số tiền đầu tư", f"{sidebar_investment_amount:,.0f} VND")
             
-            # Show personalized recommendations
-            if risk_analysis.get('recommendations'):
-                st.subheader("💡 Khuyến nghị cá nhân hóa:")
-                for rec in risk_analysis['recommendations']:
-                    st.write(f"• {rec}")
+        with col3:
+            st.metric("Stop Loss", f"{stop_loss_price:,.2f} VND")
+            st.metric("Take Profit", f"{take_profit_price:,.2f} VND")
+        
+        # Show personalized recommendations based on sidebar data
+        st.subheader("💡 Khuyến nghị cá nhân hóa:")
+        st.write(f"• Tỷ trọng tối đa: {max_position*100:.0f}% danh mục ({max_investment:,.2f} VND)")
+        st.write(f"• Stop-loss: {stop_loss_pct}% để kiểm soát rủi ro")
+        if sidebar_time_horizon.startswith('Dài hạn'):
+            st.write("• Phù hợp với chiến lược mua và giữ dài hạn")
+        elif sidebar_time_horizon.startswith('Ngắn hạn'):
+            st.write("• Theo dõi sát biến động giá để chốt lời/cắt lỗ")
+        else:
+            st.write("• Cân bằng giữa tăng trưởng và kiểm soát rủi ro")
     
     # Show comprehensive prediction data if available
     if 'predictions' in pred and pred['predictions']:
@@ -311,7 +377,7 @@ def display_price_prediction(pred):
                     with cols[i]:
                         st.metric(
                             f"{period.replace('_', ' ')}",
-                            f"{values.get('price', 0):,.0f}",
+                            f"{values.get('price', 0):,.2f}",
                             f"{values.get('change_percent', 0):+.1f}%"
                         )
 
@@ -326,6 +392,10 @@ def display_risk_assessment(risk):
     beta = risk.get('beta', 1.0)
     max_drawdown = risk.get('max_drawdown', -15.0)
     risk_score = risk.get('risk_score', 5)
+    
+    # AI-enhanced advice and reasoning
+    ai_advice = risk.get('ai_advice', '')
+    ai_reasoning = risk.get('ai_reasoning', '')
     
     # Additional metrics from agent (if available)
     var_95 = risk.get('var_95', abs(max_drawdown) if max_drawdown else 8.0)
@@ -359,16 +429,56 @@ def display_risk_assessment(risk):
         st.metric("Điểm rủi ro", f"{risk_score}/10")
         st.metric("Phân loại", risk_level)
     
-    # Show AI enhancement info if available
+    # AI-Enhanced Risk Advice Section - ALWAYS show
+    st.markdown("### 🤖 Lời khuyên quản lý rủi ro từ AI")
+    
+    # Get AI advice (with fallback)
+    display_advice = ai_advice or f"Rủi ro {risk_level} - cần quản lý position sizing thận trọng"
+    display_reasoning = ai_reasoning or f"Volatility {volatility}% yêu cầu kiểm soát rủi ro chặt chẽ"
+    
+    # Display AI advice with risk-appropriate colors
+    advice_color = '#dc3545' if 'cao' in display_advice.lower() or 'high' in display_advice.lower() else '#28a745' if 'thấp' in display_advice.lower() or 'low' in display_advice.lower() else '#ffc107'
+    
+    st.markdown(f"""
+    <div style="background: {advice_color}22; border-left: 4px solid {advice_color}; padding: 1.5rem; border-radius: 8px; margin: 1rem 0;">
+        <h4 style="color: {advice_color}; margin-bottom: 1rem;">⚠️ Khuyến nghị quản lý rủi ro</h4>
+        <p style="font-size: 1.1rem; margin-bottom: 1rem; font-weight: 500;">{display_advice}</p>
+        <p style="color: #666; font-style: italic;"><strong>Lý do:</strong> {display_reasoning}</p>
+    </div>
+    """, unsafe_allow_html=True)
+    
+    # Show AI enhancement info - ALWAYS display
+    ai_model = risk.get('ai_model_used', 'Không có AI')
     if risk.get('ai_enhanced'):
-        ai_model = risk.get('ai_model_used', 'Unknown')
         st.success(f"🤖 Phân tích rủi ro được tăng cường bởi AI: {ai_model}")
+    else:
+        st.info(f"🤖 Phân tích rủi ro cơ bản (AI: {risk.get('ai_error', 'Không cấu hình')})")
+    
+    # Always show detailed analysis section
+    with st.expander("🧠 Phân tích rủi ro AI chi tiết", expanded=False):
         if risk.get('ai_risk_analysis'):
-            with st.expander("🧠 Phân tích rủi ro AI chi tiết", expanded=True):
-                ai_text = risk['ai_risk_analysis']
-                formatted_text = ai_text.replace('. ', '.\n\n').replace(': ', ':\n\n')
-                st.markdown(f"**🤖 AI Risk Analysis:**\n\n{formatted_text}", unsafe_allow_html=True)
-    elif risk.get('ai_error'):
+            ai_text = risk['ai_risk_analysis']
+            formatted_text = ai_text.replace('. ', '.\n\n').replace(': ', ':\n\n')
+            st.markdown(f"**🤖 AI Risk Analysis:**\n\n{formatted_text}", unsafe_allow_html=True)
+        else:
+            # Show fallback analysis
+            st.markdown(f"""
+            **⚠️ Phân tích rủi ro:**
+            - Mức rủi ro: {risk_level}
+            - Volatility: {volatility:.2f}%
+            - Beta: {beta:.3f}
+            - VaR 95%: {var_95:.2f}%
+            - Risk Score: {risk_score}/10
+            
+            **💡 Khuyến nghị quản lý rủi ro:**
+            Với mức rủi ro {risk_level} và volatility {volatility:.1f}%, nhà đầu tư nên:
+            - Quản lý position sizing thận trọng
+            - Đặt stop-loss phù hợp
+            - Theo dõi biến động thị trường
+            """)
+    
+    # Show AI error if any
+    if risk.get('ai_error'):
         st.warning(f"⚠️ AI không khả dụng: {risk.get('ai_error')}")
     
     # Show data source info
@@ -399,6 +509,10 @@ def display_investment_analysis(inv):
     market_cap = inv.get('market_cap', 'N/A')
     year_high = inv.get('year_high', current_price)
     year_low = inv.get('year_low', current_price)
+    
+    # AI-enhanced advice and reasoning
+    ai_advice = inv.get('ai_advice', '')
+    ai_reasoning = inv.get('ai_reasoning', '')
     
     # Calculate upside potential from agent data
     upside_potential = ((target_price - current_price) / current_price * 100) if current_price > 0 else 0
@@ -453,20 +567,61 @@ def display_investment_analysis(inv):
         st.metric("Tỷ suất cổ tức", f"{inv_data['dividend_yield']:.1f}%")
         st.metric("Cao/Thấp 1 năm", f"{inv_data['year_high']:,.0f}/{inv_data['year_low']:,.0f}")
     
-    # Show AI enhancement info if available
+    # AI-Enhanced Investment Advice Section - ALWAYS show
+    st.markdown("### 🤖 Lời khuyên đầu tư từ AI")
+    
+    # Get AI advice (with fallback)
+    display_advice = ai_advice or f"Khuyến nghị {recommendation} dựa trên phân tích tài chính"
+    display_reasoning = ai_reasoning or f"Điểm số {inv_data.get('upside_potential', 0):.1f}% tiềm năng tăng trưởng"
+    
+    # Display AI advice with investment-appropriate colors
+    advice_color = '#28a745' if 'mua' in display_advice.lower() or 'buy' in display_advice.lower() else '#dc3545' if 'bán' in display_advice.lower() or 'sell' in display_advice.lower() else '#ffc107'
+    advice_icon = '🚀' if 'mua' in display_advice.lower() or 'buy' in display_advice.lower() else '📉' if 'bán' in display_advice.lower() or 'sell' in display_advice.lower() else '⏸️'
+    
+    st.markdown(f"""
+    <div style="background: {advice_color}22; border-left: 4px solid {advice_color}; padding: 1.5rem; border-radius: 8px; margin: 1rem 0;">
+        <h4 style="color: {advice_color}; margin-bottom: 1rem;">{advice_icon} Khuyến nghị đầu tư AI</h4>
+        <p style="font-size: 1.1rem; margin-bottom: 1rem; font-weight: 500;">{display_advice}</p>
+        <p style="color: #666; font-style: italic;"><strong>Lý do:</strong> {display_reasoning}</p>
+    </div>
+    """, unsafe_allow_html=True)
+    
+    # Show AI enhancement info - ALWAYS display
+    ai_model = inv.get('ai_model_used', 'Không có AI')
     if inv.get('ai_enhanced'):
-        ai_model = inv.get('ai_model_used', 'Unknown')
         st.success(f"🤖 Phân tích đầu tư được tăng cường bởi AI: {ai_model}")
+    else:
+        st.info(f"🤖 Phân tích đầu tư cơ bản (AI: {inv.get('ai_error', 'Không cấu hình')})")
+    
+    # Always show detailed analysis section
+    with st.expander("🧠 Phân tích đầu tư AI chi tiết", expanded=False):
         if inv.get('ai_investment_analysis'):
-            with st.expander("🧠 Phân tích đầu tư AI chi tiết", expanded=True):
-                ai_text = inv['ai_investment_analysis']
-                formatted_text = ai_text.replace('. ', '.\n\n').replace(': ', ':\n\n')
-                st.markdown(f"**🤖 AI Investment Analysis:**\n\n{formatted_text}", unsafe_allow_html=True)
+            ai_text = inv['ai_investment_analysis']
+            formatted_text = ai_text.replace('. ', '.\n\n').replace(': ', ':\n\n')
+            st.markdown(f"**🤖 AI Investment Analysis:**\n\n{formatted_text}", unsafe_allow_html=True)
+        else:
+            # Show fallback analysis
+            st.markdown(f"""
+            **💼 Phân tích đầu tư:**
+            - Khuyến nghị: {recommendation}
+            - Giá mục tiêu: {inv_data['target_price']:,.0f} VND
+            - Tiềm năng tăng: {inv_data['upside_potential']:+.1f}%
+            - P/E Ratio: {inv_data['pe_ratio']:.1f}
+            - P/B Ratio: {inv_data['pb_ratio']:.2f}
+            - Tỷ suất cổ tức: {inv_data['dividend_yield']:.1f}%
+            
+            **💡 Phân tích đầu tư:**
+            Dựa trên các chỉ số tài chính hiện tại, cổ phiếu đang ở mức định giá {"hấp dẫn" if inv_data['upside_potential'] > 10 else "hợp lý" if inv_data['upside_potential'] > 0 else "cao"}.
+            Nhà đầu tư nên xem xét các yếu tố vĩ mô và triển vọng ngành trước khi quyết định.
+            """)
+        
         if inv.get('enhanced_recommendation'):
             enhanced_rec = inv['enhanced_recommendation']
             if enhanced_rec != recommendation:
                 st.info(f"🎯 Khuyến nghị AI nâng cao: {enhanced_rec}")
-    elif inv.get('ai_error'):
+    
+    # Show AI error if any
+    if inv.get('ai_error'):
         st.warning(f"⚠️ AI không khả dụng: {inv.get('ai_error')}")
     
     # Show data source and market info
@@ -607,7 +762,8 @@ with st.sidebar:
     time_horizon = st.selectbox(
         "🕐 Thời gian đầu tư",
         ["Ngắn hạn (1-3 tháng)", "Trung hạn (3-12 tháng)", "Dài hạn (1+ năm)"],
-        index=1
+        index=1,
+        key="time_horizon"
     )
     
     risk_tolerance = st.slider(
@@ -615,7 +771,8 @@ with st.sidebar:
         min_value=0,
         max_value=100,
         value=50,
-        help="0: Thận trọng | 50: Cân bằng | 100: Rủi ro"
+        help="0: Thận trọng | 50: Cân bằng | 100: Rủi ro",
+        key="risk_tolerance"
     )
     
     investment_amount = st.number_input(
@@ -624,7 +781,8 @@ with st.sidebar:
         max_value=10_000_000_000,
         value=100_000_000,
         step=10_000_000,
-        format="%d"
+        format="%d",
+        key="investment_amount"
     )
     
     # Risk Profile Display
@@ -635,7 +793,7 @@ with st.sidebar:
     else:
         risk_label = "🔴 Mạo hiểm"
     
-    st.info(f"**Hồ sơ:** {risk_label} ({risk_tolerance}%) | **Số tiền:** {investment_amount:,} VND | **Thời gian:** {time_horizon} Tháng")
+    st.info(f"**Hồ sơ:** {risk_label} ({risk_tolerance}%) | **Số tiền:** {investment_amount:,} VND | **Thời gian:** {time_horizon}")
 
     st.divider()
     
@@ -738,25 +896,7 @@ def show_loading(message):
     </div>
     """
 
-def create_news_card(title, summary, published, source, link=None, priority=False):
-    priority_badge = '<span style="background: #ff6b6b; color: white; padding: 0.2rem 0.5rem; border-radius: 12px; font-size: 0.7rem; font-weight: bold; margin-left: 0.5rem;">🔥 PRIORITY</span>' if priority else ''
-    link_html = f'<a href="{link}" target="_blank" style="background: #2a5298; color: white; padding: 0.5rem 1rem; border-radius: 6px; text-decoration: none; font-size: 0.9rem;">🔗 Đọc chi tiết</a>' if link else '<span style="color: #95a5a6;">Không có link</span>'
-    border_color = "#ff6b6b" if priority else "#2a5298"
-    
-    return f"""
-    <div class="news-card" style="border-left: 4px solid {border_color};">
-        <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 0.5rem;">
-            <div class="news-title" style="flex: 1; font-size: 1.1rem; font-weight: 600; color: #2c3e50;">{title}</div>
-            {priority_badge}
-        </div>
-        <div class="news-meta" style="color: #7f8c8d; font-size: 0.9rem; margin-bottom: 0.8rem;">📰 {source} • 📅 {published}</div>
-        <div class="news-summary" style="color: #34495e; line-height: 1.5; margin-bottom: 1rem;">{summary}</div>
-        <div style="display: flex; justify-content: space-between; align-items: center;">
-            {link_html}
-            <span style="color: #95a5a6; font-size: 0.8rem;">Source: {source}</span>
-        </div>
-    </div>
-    """
+
 
 # Tab 1: Stock Analysis
 with tab1:
@@ -794,7 +934,7 @@ with tab1:
                 st.error(f"❌ {result['error']}")
             else:
                 # Display investment settings
-                st.info(f"⚙️ **Cấu hình:** {time_horizon} | Khả năng chấp nhận rủi ro: {risk_tolerance}% ({risk_label}) | Số tiền đầu tư: {investment_amount:,} VNĐ")
+                st.info(f"⚙️ **Cấu hình:** {time_horizon} | Khả năng chấp nhận rủi ro: {risk_tolerance}% ({risk_label}) | Số tiền đầu tư: {investment_amount:,} VND")
 
                 # Display comprehensive results with real data
                 loop = asyncio.new_event_loop()
@@ -806,11 +946,11 @@ with tab1:
                 loop = asyncio.new_event_loop()
                 asyncio.set_event_loop(loop)
                 # Get prediction with risk-adjusted parameters
-                time_horizon_clean = time_horizon.split(" (")[0]  # Remove the extra text like "(1-3 tháng)"
+                time_horizon_clean = time_horizon.split(" (")[0] if "(" in time_horizon else time_horizon  # Remove the extra text like "(1-3 tháng)"
                 days = {"Ngắn hạn": 30, "Trung hạn": 90, "Dài hạn": 180}.get(time_horizon_clean, 90)
                 pred = loop.run_until_complete(asyncio.to_thread(
-                    main_agent.price_predictor.predict_price,
-                    symbol
+                    main_agent.price_predictor.predict_price_enhanced,
+                    symbol, days, risk_tolerance, time_horizon_clean, investment_amount
                 ))
             display_price_prediction(pred)
     elif risk_btn:
@@ -819,6 +959,7 @@ with tab1:
                 loop = asyncio.new_event_loop()
                 asyncio.set_event_loop(loop)
                 risk = loop.run_until_complete(asyncio.to_thread(main_agent.risk_expert.assess_risk, symbol))
+                loop.close()
             display_risk_assessment(risk)
     elif invest_btn:
         with results_container:
@@ -826,6 +967,7 @@ with tab1:
                 loop = asyncio.new_event_loop()
                 asyncio.set_event_loop(loop)
                 inv = loop.run_until_complete(asyncio.to_thread(main_agent.investment_expert.analyze_stock, symbol))
+                loop.close()
             display_investment_analysis(inv)
 
 # Tab 2: AI Chatbot
@@ -1041,8 +1183,7 @@ with tab3:
                     st.success(f"✅ Tìm thấy {news_count} tin tức thật từ {source}")
                 elif 'CafeF' in source:
                     st.info(f"ℹ️ Tìm thấy {news_count} tin tức từ {source}")
-                #else:
-                    #st.warning(f"⚠️ Sử dụng {news_count} tin tức mẫu từ {source}")
+                
                 
                 for i, news in enumerate(market_news.get('news', []), 1):
                     with st.expander(f"🌍 {i}. {news.get('title', 'Không có tiêu đề')}"):
@@ -1071,19 +1212,12 @@ with tab4:
         else:
             st.info(f"📋 Cấu hình CrewAI để lấy tin tức thật về {symbol}")
     
-        # News limit selector
-        news_limit = st.selectbox(
-            f"📊 Số lượng bài báo về {symbol}:",
-            [10, 15, 20, 25, 30],
-            index=2,  # Default to 20
-            help=f"Chọn số lượng bài báo về {symbol} muốn crawl"
-        )
         
         if st.button(f"🔄 Lấy tin tức {symbol}", type="primary"):
-            with st.spinner(f"Đang crawl {news_limit} tin tức về {symbol}..."):
+            with st.spinner(f"Đang crawl tin tức về {symbol}..."):
                 loop = asyncio.new_event_loop()
                 asyncio.set_event_loop(loop)
-                ticker_news = loop.run_until_complete(main_agent.get_ticker_news_enhanced(symbol, news_limit))
+                ticker_news = loop.run_until_complete(main_agent.get_ticker_news_enhanced(symbol))
                 loop.close()
                 
                 if ticker_news.get('error'):
@@ -1245,13 +1379,31 @@ with tab6:
                 st.success(f"✅ Tìm thấy {market_news.get('news_count', 0)} tin tức thị trường")
                 
                 for i, news in enumerate(market_news.get('news', []), 1):
-                    st.markdown(create_news_card(
-                        news.get('title', 'Không có tiêu đề'),
-                        news.get('summary', 'Không có tóm tắt'),
-                        news.get('published', 'Không rõ'),
-                        news.get('publisher', 'Tin tức thị trường'),
-                        news.get('link')
-                    ), unsafe_allow_html=True)
+                    title = news.get('title', 'Không có tiêu đề')
+                    summary = news.get('summary', 'Không có tóm tắt')
+                    published = news.get('published', 'Không rõ')
+                    publisher = news.get('publisher', 'Tin tức thị trường')
+                    link = news.get('link')
+                    
+                    # Create a styled container for each news item
+                    with st.container():
+                        st.markdown(f"""
+                        <div style="background: white; padding: 1.5rem; border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.08); border-left: 4px solid #2a5298; margin-bottom: 1rem;">
+                            <div style="font-size: 1.1rem; font-weight: 600; color: #2c3e50; margin-bottom: 0.5rem;">{title}</div>
+                            <div style="color: #7f8c8d; font-size: 0.9rem; margin-bottom: 0.8rem;">📰 {publisher} • 📅 {published}</div>
+                            <div style="color: #34495e; line-height: 1.5; margin-bottom: 1rem;">{summary}</div>
+                        </div>
+                        """, unsafe_allow_html=True)
+                        
+                        # Add link button if available
+                        if link:
+                            col1, col2, col3 = st.columns([1, 1, 2])
+                            with col1:
+                                st.link_button("🔗 Đọc chi tiết", link)
+                            with col2:
+                                st.caption(f"Source: {publisher}")
+                        else:
+                            st.caption(f"Source: {publisher} • Không có link")
 
 # Professional Footer
 st.markdown("---")

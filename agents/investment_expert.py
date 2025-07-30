@@ -805,6 +805,26 @@ class InvestmentExpert:
                 # Fallback to sync analysis
                 result = self._run_analysis_sync(symbol)
             
+            # Add AI enhancement if available - ALWAYS try to get AI advice
+            if not result.get('error'):
+                if self.ai_agent:
+                    try:
+                        ai_enhancement = self.get_ai_enhancement(symbol, result)
+                        result.update(ai_enhancement)
+                    except Exception as e:
+                        print(f"⚠️ AI enhancement failed: {e}")
+                        result['ai_enhanced'] = False
+                        result['ai_error'] = str(e)
+                        # Provide fallback advice
+                        result['ai_advice'] = f"Khuyến nghị {result.get('recommendation', 'HOLD')} dựa trên phân tích cơ bản"
+                        result['ai_reasoning'] = f"Điểm số {result.get('score', 50)}/100 cho thấy {result.get('reason', 'cần thận trọng')}"
+                else:
+                    # No AI agent available - provide basic advice
+                    result['ai_enhanced'] = False
+                    result['ai_error'] = 'AI agent not configured'
+                    result['ai_advice'] = f"Khuyến nghị {result.get('recommendation', 'HOLD')} dựa trên phân tích tài chính"
+                    result['ai_reasoning'] = f"Điểm số {result.get('score', 50)}/100 - {result.get('reason', 'phân tích cơ bản')}"
+            
             print(f"✅ Analysis completed: {result['recommendation']} (Score: {result['score']}/100)")
             return result
             
@@ -1123,27 +1143,97 @@ class InvestmentExpert:
             return {'ai_enhanced': False, 'ai_error': 'AI agent not available'}
         
         try:
-            context = f"""
-Analyze investment for {symbol}:
-Current recommendation: {base_analysis.get('recommendation', 'N/A')}
-Score: {base_analysis.get('score', 50)}/100
-Reason: {base_analysis.get('reason', 'N/A')}
-
-Provide enhanced recommendation and confidence level."""
+            # Get analysis details for context
+            analysis_details = base_analysis.get('analysis', {})
+            financial = analysis_details.get('financial', {})
+            technical = analysis_details.get('technical', {})
+            valuation = analysis_details.get('valuation', {})
             
-            ai_result = self.ai_agent.generate_with_fallback(context, 'investment_analysis', max_tokens=300)
+            context = f"""
+Bạn là chuyên gia đầu tư. Hãy phân tích cổ phiếu {symbol}:
+
+PHÂN TÍCH HIỆN TẠI:
+- Khuyến nghị: {base_analysis.get('recommendation', 'HOLD')}
+- Điểm số: {base_analysis.get('score', 50)}/100
+- Lý do: {base_analysis.get('reason', 'Không có thông tin')}
+- Điểm tài chính: {financial.get('total_score', 50)}/100
+- Điểm kỹ thuật: {technical.get('total_score', 50)}/100
+- Điểm định giá: {valuation.get('total_score', 50)}/100
+
+YÊU CẦU:
+1. Đưa ra lời khuyên đầu tư cụ thể (mua/bán/giữ)
+2. Giải thích lý do dựa trên phân tích
+3. Đưa ra hướng dẫn thực tế
+
+Trả lời ngắn gọn, thực tế cho nhà đầu tư Việt Nam.
+
+ADVICE: [lời khuyên đầu tư cụ thể]
+REASONING: [lý do và hướng dẫn]
+"""
+            
+            ai_result = self.ai_agent.generate_with_fallback(context, 'investment_analysis', max_tokens=500)
             
             if ai_result['success']:
+                # Parse AI response for advice and reasoning
+                ai_advice, ai_reasoning = self._parse_ai_advice(ai_result['response'])
+                
                 return {
                     'ai_enhanced': True,
-                    'ai_analysis': ai_result['response'],
-                    'ai_model_used': ai_result.get('model_used', 'Unknown')
+                    'ai_investment_analysis': ai_result['response'],
+                    'ai_model_used': ai_result.get('model_used', 'Unknown'),
+                    'ai_advice': ai_advice or f"Khuyến nghị {base_analysis.get('recommendation', 'HOLD')} dựa trên phân tích",
+                    'ai_reasoning': ai_reasoning or f"Điểm số {base_analysis.get('score', 50)}/100 cho thấy tiềm năng đầu tư"
                 }
             else:
-                return {'ai_enhanced': False, 'ai_error': ai_result.get('error', 'AI analysis failed')}
+                # Return fallback advice even when AI fails
+                return {
+                    'ai_enhanced': False, 
+                    'ai_error': ai_result.get('error', 'AI analysis failed'),
+                    'ai_advice': f"Khuyến nghị {base_analysis.get('recommendation', 'HOLD')} dựa trên phân tích tài chính",
+                    'ai_reasoning': f"Điểm số {base_analysis.get('score', 50)}/100 - AI không khả dụng"
+                }
                 
         except Exception as e:
             return {'ai_enhanced': False, 'ai_error': str(e)}
+    
+    def _parse_ai_advice(self, ai_response: str):
+        """Parse AI response for advice and reasoning"""
+        import re
+        
+        advice = ""
+        reasoning = ""
+        
+        try:
+            # Extract advice
+            advice_match = re.search(r'ADVICE:\s*(.+?)(?=\n|REASONING:|$)', ai_response, re.IGNORECASE | re.DOTALL)
+            if advice_match:
+                advice = advice_match.group(1).strip()
+            
+            # Extract reasoning
+            reasoning_match = re.search(r'REASONING:\s*(.+?)(?=\n\n|$)', ai_response, re.IGNORECASE | re.DOTALL)
+            if reasoning_match:
+                reasoning = reasoning_match.group(1).strip()
+            
+            # Fallback: use entire response if no structured format
+            if not advice and not reasoning:
+                lines = ai_response.strip().split('\n')
+                if len(lines) >= 2:
+                    advice = lines[0]
+                    reasoning = ' '.join(lines[1:])
+                elif ai_response.strip():
+                    # Use entire response as advice if it's meaningful
+                    advice = ai_response[:150] + "..." if len(ai_response) > 150 else ai_response
+                    reasoning = "Phân tích đầu tư tổng hợp từ AI"
+                else:
+                    advice = "Cần phân tích kỹ hơn trước khi quyết định"
+                    reasoning = "Dữ liệu hiện tại chưa đủ để đưa ra khuyến nghị cụ thể"
+                    
+        except Exception as e:
+            print(f"⚠️ AI advice parsing failed: {e}")
+            advice = "Cần phân tích kỹ hơn trước khi quyết định"
+            reasoning = "Dựa trên các chỉ số tài chính và kỹ thuật hiện tại"
+            
+        return advice, reasoning
     
 
     

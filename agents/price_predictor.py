@@ -296,77 +296,207 @@ class PricePredictor:
             indicators['volatility'] = returns.std() * np.sqrt(252) * 100
             indicators['volatility_percentile'] = (returns.rolling(252).std().iloc[-1] > returns.rolling(252).std().quantile(0.8))
             
-            return {k: round(float(v), 4) if isinstance(v, (int, float, np.number)) else v for k, v in indicators.items()}
+            return {k: round(float(v), 4) if isinstance(v, (int, float, np.number)) and not (np.isnan(float(v)) if isinstance(v, (int, float, np.number)) else False) else v for k, v in indicators.items()}
             
         except Exception as e:
             return {"error": f"Indicator calculation error: {str(e)}"}
     
     def _analyze_market_trend(self, data):
-        """Phân tích xu hướng thị trường"""
+        """Phân tích xu hướng thị trường với AI Gemini integration"""
         try:
             current_price = data['close'].iloc[-1]
             
-            # Trend strength analysis
+            # Calculate technical indicators
             sma_5 = data['close'].rolling(5).mean().iloc[-1]
             sma_20 = data['close'].rolling(20).mean().iloc[-1]
             sma_50 = data['close'].rolling(50).mean().iloc[-1]
+            ema_12 = data['close'].ewm(span=12).mean().iloc[-1]
+            ema_26 = data['close'].ewm(span=26).mean().iloc[-1]
             
-            trend_score = 0
-            trend_signals = []
+            # RSI calculation
+            delta = data['close'].diff()
+            gain = (delta.where(delta > 0, 0)).rolling(window=14).mean()
+            loss = (-delta.where(delta < 0, 0)).rolling(window=14).mean()
+            rs = gain / loss
+            rsi = (100 - (100 / (1 + rs))).iloc[-1]
             
-            # Price vs Moving Averages
-            if current_price > sma_5:
-                trend_score += 1
-                trend_signals.append("Price > SMA5")
-            if current_price > sma_20:
-                trend_score += 1
-                trend_signals.append("Price > SMA20")
-            if current_price > sma_50:
-                trend_score += 1
-                trend_signals.append("Price > SMA50")
+            # MACD
+            macd = ema_12 - ema_26
+            macd_signal = pd.Series([macd]).ewm(span=9).mean().iloc[0]
             
-            # Moving Average alignment
-            if sma_5 > sma_20:
-                trend_score += 1
-                trend_signals.append("SMA5 > SMA20")
-            if sma_20 > sma_50:
-                trend_score += 1
-                trend_signals.append("SMA20 > SMA50")
-            
-            # Determine trend strength
-            if trend_score >= 4:
-                trend_strength = "Strong Bullish"
-                trend_direction = "bullish"
-            elif trend_score >= 3:
-                trend_strength = "Moderate Bullish"
-                trend_direction = "bullish"
-            elif trend_score >= 2:
-                trend_strength = "Neutral"
-                trend_direction = "neutral"
-            elif trend_score >= 1:
-                trend_strength = "Moderate Bearish"
-                trend_direction = "bearish"
-            else:
-                trend_strength = "Strong Bearish"
-                trend_direction = "bearish"
+            # Volume analysis
+            volume_trend = 0
+            if 'volume' in data.columns and len(data) > 20:
+                recent_vol = data['volume'].iloc[-5:].mean()
+                avg_vol = data['volume'].iloc[-20:].mean()
+                volume_trend = recent_vol / avg_vol if avg_vol > 0 else 1
             
             # Price momentum
             momentum_5 = (current_price - data['close'].iloc[-6]) / data['close'].iloc[-6] * 100
             momentum_20 = (current_price - data['close'].iloc[-21]) / data['close'].iloc[-21] * 100
             
+            # Technical scoring (0-100)
+            tech_score = 50  # Base neutral
+            signals = []
+            
+            # Price vs MA (30 points)
+            if current_price > sma_50:
+                tech_score += 15
+                signals.append("Above SMA50")
+            if current_price > sma_20:
+                tech_score += 10
+                signals.append("Above SMA20")
+            if current_price > sma_5:
+                tech_score += 5
+                signals.append("Above SMA5")
+            
+            # MA alignment (20 points)
+            if sma_5 > sma_20 > sma_50:
+                tech_score += 20
+                signals.append("Bullish MA alignment")
+            elif sma_5 < sma_20 < sma_50:
+                tech_score -= 20
+                signals.append("Bearish MA alignment")
+            
+            # MACD (15 points)
+            if macd > macd_signal:
+                tech_score += 15
+                signals.append("MACD bullish")
+            else:
+                tech_score -= 15
+                signals.append("MACD bearish")
+            
+            # RSI (15 points)
+            if 30 < rsi < 70:
+                tech_score += 10
+                signals.append("RSI healthy")
+            elif rsi < 30:
+                tech_score += 15
+                signals.append("RSI oversold")
+            elif rsi > 70:
+                tech_score -= 10
+                signals.append("RSI overbought")
+            
+            # Momentum (20 points)
+            if momentum_5 > 2:
+                tech_score += 10
+                signals.append("Strong 5d momentum")
+            if momentum_20 > 5:
+                tech_score += 10
+                signals.append("Strong 20d momentum")
+            
+            # Volume confirmation (10 points)
+            if volume_trend > 1.2:
+                tech_score += 10
+                signals.append("Volume supporting")
+            
+            # Determine base trend
+            if tech_score >= 75:
+                base_direction = "bullish"
+                base_strength = "Strong Bullish"
+            elif tech_score >= 60:
+                base_direction = "bullish"
+                base_strength = "Moderate Bullish"
+            elif tech_score >= 40:
+                base_direction = "neutral"
+                base_strength = "Neutral"
+            elif tech_score >= 25:
+                base_direction = "bearish"
+                base_strength = "Moderate Bearish"
+            else:
+                base_direction = "bearish"
+                base_strength = "Strong Bearish"
+            
+            # AI Gemini enhancement
+            final_direction = base_direction
+            final_strength = base_strength
+            
+            if self.ai_agent:
+                try:
+                    ai_analysis = self._get_gemini_trend_analysis(
+                        current_price, tech_score, rsi, macd, momentum_5, momentum_20, volume_trend
+                    )
+                    
+                    if ai_analysis.get('ai_direction'):
+                        final_direction = ai_analysis['ai_direction']
+                        final_strength = ai_analysis.get('ai_strength', base_strength)
+                        signals.append("Gemini AI enhanced")
+                        
+                except Exception as e:
+                    print(f"⚠️ Gemini trend analysis failed: {e}")
+            
             return {
-                "direction": trend_direction,
-                "strength": trend_strength,
-                "score": f"{trend_score}/5",
-                "signals": trend_signals,
+                "direction": final_direction,
+                "strength": final_strength,
+                "score": f"{tech_score}/100",
+                "signals": signals,
+                "rsi": round(rsi, 1),
+                "macd": round(macd, 4),
                 "momentum_5d": round(momentum_5, 2),
                 "momentum_20d": round(momentum_20, 2),
+                "volume_trend": round(volume_trend, 2),
                 "support_level": round(data['close'].rolling(20).min().iloc[-1], 2),
                 "resistance_level": round(data['close'].rolling(20).max().iloc[-1], 2)
             }
             
         except Exception as e:
             return {"error": f"Trend analysis error: {str(e)}"}
+    
+    def _get_gemini_trend_analysis(self, price, tech_score, rsi, macd, momentum_5, momentum_20, volume_trend):
+        """Get Gemini AI trend analysis"""
+        try:
+            context = f"""
+Phân tích xu hướng kỹ thuật:
+- Điểm kỹ thuật: {tech_score}/100
+- RSI: {rsi:.1f}
+- MACD: {macd:.4f}
+- Momentum 5 ngày: {momentum_5:.1f}%
+- Momentum 20 ngày: {momentum_20:.1f}%
+- Volume trend: {volume_trend:.2f}x
+
+Dựa trên dữ liệu kỹ thuật, đánh giá xu hướng:
+- Nếu tín hiệu mạnh → BULLISH/BEARISH
+- Nếu tín hiệu yếu → NEUTRAL
+- Nếu tín hiệu trái chiều → MIXED
+
+TREND: [BULLISH/BEARISH/NEUTRAL]
+STRENGTH: [Strong/Moderate/Weak]
+REASON: [lý do ngắn gọn]
+"""
+            
+            ai_result = self.ai_agent.generate_with_fallback(context, 'trend_analysis', max_tokens=200)
+            
+            if ai_result['success']:
+                response = ai_result['response']
+                
+                # Parse AI response
+                ai_direction = None
+                ai_strength = None
+                
+                if 'TREND: BULLISH' in response.upper():
+                    ai_direction = 'bullish'
+                elif 'TREND: BEARISH' in response.upper():
+                    ai_direction = 'bearish'
+                elif 'TREND: NEUTRAL' in response.upper():
+                    ai_direction = 'neutral'
+                
+                if 'STRENGTH: STRONG' in response.upper():
+                    ai_strength = f"Strong {ai_direction.title()}" if ai_direction else "Strong"
+                elif 'STRENGTH: MODERATE' in response.upper():
+                    ai_strength = f"Moderate {ai_direction.title()}" if ai_direction else "Moderate"
+                elif 'STRENGTH: WEAK' in response.upper():
+                    ai_strength = f"Weak {ai_direction.title()}" if ai_direction else "Weak"
+                
+                return {
+                    'ai_direction': ai_direction,
+                    'ai_strength': ai_strength,
+                    'ai_analysis': response
+                }
+            
+            return {}
+            
+        except Exception as e:
+            return {}
     
     def _apply_ml_predictions(self, data, indicators):
         """Apply machine learning-based predictions using simple models"""
@@ -631,7 +761,7 @@ class PricePredictor:
             result, risk_tolerance, time_horizon, investment_amount
         )
         
-        # Add AI enhancement if available
+        # Add AI enhancement if available - ALWAYS try to get AI advice
         if self.ai_agent:
             try:
                 ai_analysis = self._get_ai_price_analysis(symbol, result, days, risk_tolerance, time_horizon)
@@ -653,6 +783,10 @@ class PricePredictor:
                 print(f"⚠️ AI analysis failed: {e}")
                 result['ai_enhanced'] = False
                 result['ai_error'] = str(e)
+        else:
+            # No AI agent available
+            result['ai_enhanced'] = False
+            result['ai_error'] = 'AI agent not configured'
         
         return result
     
@@ -784,84 +918,98 @@ class PricePredictor:
             # Determine risk profile for AI context
             risk_profile = "Conservative" if risk_tolerance <= 30 else "Moderate" if risk_tolerance <= 70 else "Aggressive"
             
-            # Get CrewAI news sentiment if available
-            news_context = ""
-            if technical_data.get('crewai_news'):
-                news_sentiment = technical_data['crewai_news'].get('sentiment', 'Neutral')
-                news_context = f"\n- Sentiment tin tức: {news_sentiment}"
+            # Get technical indicators safely
+            tech_indicators = technical_data.get('technical_indicators', {})
+            trend_analysis = technical_data.get('trend_analysis', {})
+            current_price = technical_data.get('current_price', 0)
+            rsi = tech_indicators.get('rsi', 50)
+            volatility = tech_indicators.get('volatility', 25)
+            trend_direction = trend_analysis.get('direction', 'neutral')
             
-            # Prepare enhanced context for AI analysis
-            context = f"""
-Phân tích dự đoán giá cổ phiếu {symbol} trong {days} ngày tới cho nhà đầu tư {risk_profile}:
+            # Generate detailed fallback advice based on real data from sidebar
+            fallback_advice = self._generate_detailed_fallback_advice(
+                symbol, current_price, rsi, volatility, trend_direction, 
+                risk_profile, risk_tolerance, time_horizon
+            )
+            
+            # Try AI analysis with shorter timeout and simpler prompt
+            if self.ai_agent:
+                try:
+                    # Simplified context to avoid timeout
+                    context = f"""
+Phân tích {symbol}:
+- Giá: {current_price:,.0f} VND
+- RSI: {rsi:.1f}
+- Xu hướng: {trend_direction}
+- Nhà đầu tư: {risk_profile} ({risk_tolerance}%)
+- Thời gian: {time_horizon}
 
-HỒ SƠ NHÀ ĐẦU TƯ:
-- Khả năng chấp nhận rủi ro: {risk_tolerance}% ({risk_profile})
-- Khung thời gian: {time_horizon}
-- Mục tiêu: {"Bảo toàn vốn + lợi nhuận ổn định" if risk_profile == "Conservative" else "Cân bằng tăng trưởng và rủi ro" if risk_profile == "Moderate" else "Tối đa hóa lợi nhuận"}
-
-DỮ LIỆU KỸ THUẬT:
-- Giá hiện tại: {technical_data['current_price']:,.0f} VND
-- Xu hướng: {technical_data['trend_analysis']['direction']}
-- Độ tin cậy: {technical_data['confidence_scores'].get('medium_term', 50)}%
-- RSI: {technical_data.get('technical_indicators', {}).get('rsi', 'N/A')}
-- MACD: {technical_data.get('technical_indicators', {}).get('macd', 'N/A')}
-- Bollinger Bands: {technical_data.get('technical_indicators', {}).get('bb_position', 'N/A')}
-- Volatility: {technical_data.get('technical_indicators', {}).get('volatility', 'N/A')}%
-- Support: {technical_data['trend_analysis'].get('support_level', 'N/A')}
-- Resistance: {technical_data['trend_analysis'].get('resistance_level', 'N/A')}{news_context}
-
-NHIỆM VỤ:
-Dựa trên hồ sơ rủi ro {risk_profile}, hãy điều chỉnh dự đoán kỹ thuật và đưa ra khuyến nghị phù hợp:
-
-1. Điều chỉnh dự đoán giá (tăng/giảm % so với technical analysis)
-2. Điều chỉnh độ tin cậy (tăng/giảm % dựa trên risk profile)
-3. Xu hướng AI (BULLISH/BEARISH/NEUTRAL)
-4. Lý do chi tiết cho các điều chỉnh
-5. Mức support/resistance AI điều chỉnh
-6. Khuyến nghị cụ thể cho {risk_profile} investor
-
-Trả lời theo format:
-PRICE_ADJUSTMENT: [+/-]X%
-CONFIDENCE_ADJUSTMENT: [+/-]Y%
-AI_TREND: [BULLISH/BEARISH/NEUTRAL]
-SUPPORT_ADJUSTMENT: [+/-]Z%
-RESISTANCE_ADJUSTMENT: [+/-]W%
-RISK_RECOMMENDATION: [BUY/HOLD/SELL] cho {risk_profile}
-REASON: [lý do chi tiết phù hợp với risk profile]
+Đưa ra lời khuyên ngắn gọn:
+ADVICE: [mua/bán/giữ và lý do]
+REASONING: [giải thích ngắn]
 """
-            
-            # Get AI analysis
-            ai_result = self.ai_agent.generate_with_fallback(context, 'price_prediction', max_tokens=600)
-            
-            if ai_result['success']:
-                # Parse AI response for actual adjustments
-                ai_adjustments = self._parse_ai_price_adjustments(ai_result['response'])
-                
-                # Apply AI adjustments to predictions
-                adjusted_predictions = self._apply_ai_price_adjustments(
-                    technical_data['predictions'], 
-                    technical_data['current_price'],
-                    ai_adjustments
-                )
-                
-                return {
-                    'ai_analysis': ai_result['response'],
-                    'ai_model_used': ai_result['model_used'],
-                    'ai_enhanced': True,
-                    'ai_adjustments': ai_adjustments,
-                    'ai_adjusted_predictions': adjusted_predictions,
-                    'enhanced_confidence': max(10, min(95, 
-                        technical_data['confidence_scores'].get('medium_term', 50) + ai_adjustments.get('confidence_adj', 0)
-                    )),
-                    'ai_trend': ai_adjustments.get('trend', technical_data['trend_analysis']['direction']),
-                    'ai_support': technical_data['trend_analysis'].get('support_level', 0) * (1 + ai_adjustments.get('support_adj', 0)/100),
-                    'ai_resistance': technical_data['trend_analysis'].get('resistance_level', 0) * (1 + ai_adjustments.get('resistance_adj', 0)/100)
-                }
+                    
+                    # Use shorter timeout to avoid 503 errors
+                    ai_result = self.ai_agent.generate_with_fallback(context, 'price_prediction', max_tokens=300)
+                    
+                    if ai_result.get('success') and ai_result.get('response'):
+                        # Parse AI response for advice and reasoning
+                        ai_advice, ai_reasoning = self._parse_ai_advice(ai_result['response'])
+                        
+                        # Use AI advice if valid, otherwise use fallback
+                        final_advice = ai_advice if ai_advice and len(ai_advice) > 10 else fallback_advice['advice']
+                        final_reasoning = ai_reasoning if ai_reasoning and len(ai_reasoning) > 10 else fallback_advice['reasoning']
+                        
+                        return {
+                            'ai_analysis': ai_result['response'],
+                            'ai_model_used': ai_result.get('model_used', 'Gemini'),
+                            'ai_enhanced': True,
+                            'ai_advice': final_advice,
+                            'ai_reasoning': final_reasoning,
+                            'enhanced_confidence': max(10, min(95, 
+                                technical_data.get('confidence_scores', {}).get('medium_term', 50) + 5
+                            ))
+                        }
+                    else:
+                        # AI failed, use detailed fallback
+                        return {
+                            'ai_enhanced': False,
+                            'ai_error': ai_result.get('error', 'AI response invalid'),
+                            'ai_advice': fallback_advice['advice'],
+                            'ai_reasoning': fallback_advice['reasoning']
+                        }
+                        
+                except Exception as ai_error:
+                    # AI completely failed, use detailed fallback
+                    error_msg = str(ai_error)
+                    if "503" in error_msg or "overloaded" in error_msg.lower():
+                        error_msg = "AI đang quá tải, vui lòng thử lại sau"
+                    elif "timeout" in error_msg.lower():
+                        error_msg = "AI phản hồi chậm, sử dụng phân tích kỹ thuật"
+                    
+                    return {
+                        'ai_enhanced': False,
+                        'ai_error': error_msg,
+                        'ai_advice': fallback_advice['advice'],
+                        'ai_reasoning': fallback_advice['reasoning']
+                    }
             else:
-                return {'ai_enhanced': False, 'ai_error': ai_result.get('error', 'AI not available')}
+                # No AI agent, use detailed fallback
+                return {
+                    'ai_enhanced': False,
+                    'ai_error': 'AI chưa được cấu hình',
+                    'ai_advice': fallback_advice['advice'],
+                    'ai_reasoning': fallback_advice['reasoning']
+                }
                 
         except Exception as e:
-            return {'ai_enhanced': False, 'ai_error': str(e)}
+            # Fallback for any other errors
+            return {
+                'ai_enhanced': False, 
+                'ai_error': f'Lỗi hệ thống: {str(e)}',
+                'ai_advice': f"Theo dõi {symbol} với RSI {rsi:.1f} và xu hướng {trend_direction}",
+                'ai_reasoning': "Sử dụng phân tích kỹ thuật cơ bản do lỗi hệ thống"
+            }
     
     def _parse_ai_price_adjustments(self, ai_response: str):
         """Parse AI response for numerical adjustments"""
@@ -904,6 +1052,120 @@ REASON: [lý do chi tiết phù hợp với risk profile]
             print(f"⚠️ AI adjustment parsing failed: {e}")
             
         return adjustments
+    
+    def _generate_detailed_fallback_advice(self, symbol: str, current_price: float, rsi: float, 
+                                          volatility: float, trend_direction: str, risk_profile: str, 
+                                          risk_tolerance: int, time_horizon: str):
+        """Generate detailed fallback advice using real data from sidebar"""
+        try:
+            # Analyze RSI signals
+            if rsi > 70:
+                rsi_signal = "quá mua"
+                rsi_action = "cân nhắc chốt lời hoặc chờ điều chỉnh"
+            elif rsi < 30:
+                rsi_signal = "quá bán"
+                rsi_action = "có thể tìm cơ hội mua vào"
+            else:
+                rsi_signal = "trung tính"
+                rsi_action = "theo dõi thêm tín hiệu khác"
+            
+            # Analyze volatility
+            if volatility > 30:
+                vol_assessment = "biến động cao"
+                vol_advice = "cần quản lý rủi ro chặt chẽ"
+            elif volatility < 15:
+                vol_assessment = "ổn định"
+                vol_advice = "phù hợp đầu tư dài hạn"
+            else:
+                vol_assessment = "biến động vừa phải"
+                vol_advice = "cần theo dõi xu hướng"
+            
+            # Generate advice based on risk profile and data
+            if risk_profile == "Conservative":
+                if trend_direction == "bullish" and rsi < 60 and volatility < 25:
+                    advice = f"Có thể cân nhắc mua {symbol} với tỷ trọng nhỏ (5-10% danh mục)"
+                    reasoning = f"Xu hướng tăng, RSI {rsi:.1f} chưa quá mua, volatility {volatility:.1f}% chấp nhận được cho nhà đầu tư thận trọng"
+                elif rsi > 70:
+                    advice = f"Nên chờ {symbol} điều chỉnh trước khi mua"
+                    reasoning = f"RSI {rsi:.1f} cho thấy {rsi_signal}, không phù hợp với chiến lược thận trọng"
+                else:
+                    advice = f"Giữ quan sát {symbol}, chưa có tín hiệu rõ ràng"
+                    reasoning = f"Với hồ sơ thận trọng, cần tín hiệu mạnh hơn. Hiện tại RSI {rsi:.1f}, xu hướng {trend_direction}"
+                    
+            elif risk_profile == "Moderate":
+                if trend_direction == "bullish" and rsi < 70:
+                    advice = f"Có thể mua {symbol} với tỷ trọng 10-15% danh mục"
+                    reasoning = f"Xu hướng {trend_direction}, RSI {rsi:.1f} còn dư địa, phù hợp với chiến lược cân bằng"
+                elif trend_direction == "bearish" and rsi > 50:
+                    advice = f"Cân nhắc giảm tỷ trọng {symbol} hoặc chờ tín hiệu phục hồi"
+                    reasoning = f"Xu hướng giảm, RSI {rsi:.1f} chưa oversold, nên thận trọng"
+                else:
+                    advice = f"Có thể DCA {symbol} với khối lượng nhỏ định kỳ"
+                    reasoning = f"Chiến lược trung bình hóa chi phí phù hợp khi thị trường {trend_direction}, RSI {rsi:.1f}"
+                    
+            else:  # Aggressive
+                if trend_direction == "bullish":
+                    advice = f"Có thể tăng tỷ trọng {symbol} lên 15-20% danh mục"
+                    reasoning = f"Xu hướng tăng mạnh, RSI {rsi:.1f}, nhà đầu tư mạo hiểm có thể tận dụng momentum"
+                elif rsi < 30:
+                    advice = f"Cơ hội mua {symbol} khi RSI oversold"
+                    reasoning = f"RSI {rsi:.1f} {rsi_signal}, có thể là cơ hội tốt cho nhà đầu tư mạo hiểm"
+                else:
+                    advice = f"Có thể swing trade {symbol} dựa trên biến động"
+                    reasoning = f"Volatility {volatility:.1f}% tạo cơ hội giao dịch ngắn hạn cho nhà đầu tư mạo hiểm"
+            
+            # Add time horizon consideration
+            if time_horizon == "Ngắn hạn":
+                advice += " trong 1-3 tháng tới"
+                reasoning += f". Khung thời gian ngắn phù hợp với {vol_assessment}"
+            elif time_horizon == "Dài hạn":
+                advice += " và giữ dài hạn"
+                reasoning += f". Đầu tư dài hạn giúp giảm thiểu rủi ro từ {vol_assessment}"
+            
+            return {
+                'advice': advice,
+                'reasoning': reasoning
+            }
+            
+        except Exception as e:
+            return {
+                'advice': f"Theo dõi {symbol} với RSI {rsi:.1f} và xu hướng {trend_direction}",
+                'reasoning': f"Phân tích kỹ thuật cơ bản cho nhà đầu tư {risk_profile.lower()}"
+            }
+    
+    def _parse_ai_advice(self, ai_response: str):
+        """Parse AI response for advice and reasoning"""
+        import re
+        
+        advice = ""
+        reasoning = ""
+        
+        try:
+            # Extract advice
+            advice_match = re.search(r'ADVICE:\s*(.+?)(?=\n|REASONING:|$)', ai_response, re.IGNORECASE | re.DOTALL)
+            if advice_match:
+                advice = advice_match.group(1).strip()
+            
+            # Extract reasoning
+            reasoning_match = re.search(r'REASONING:\s*(.+?)(?=\n\n|$)', ai_response, re.IGNORECASE | re.DOTALL)
+            if reasoning_match:
+                reasoning = reasoning_match.group(1).strip()
+            
+            # Fallback: use entire response if no structured format
+            if not advice and not reasoning:
+                lines = ai_response.strip().split('\n')
+                if len(lines) >= 2:
+                    advice = lines[0]
+                    reasoning = ' '.join(lines[1:])
+                elif ai_response.strip():
+                    # Use entire response as advice if it's meaningful
+                    advice = ai_response[:150] + "..." if len(ai_response) > 150 else ai_response
+                    reasoning = "Phân tích tổng hợp từ AI"
+                    
+        except Exception as e:
+            print(f"⚠️ AI advice parsing failed: {e}")
+            
+        return advice, reasoning
     
     def _apply_ai_price_adjustments(self, base_predictions: dict, current_price: float, ai_adjustments: dict):
         """Apply AI adjustments to base predictions"""
