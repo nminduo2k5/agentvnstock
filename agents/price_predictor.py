@@ -415,12 +415,19 @@ class PricePredictor:
             if predictions:
                 try:
                     # Get predictions and calculate changes from current price
+                    pred_1d = predictions.get('short_term', {}).get('1_days', {})
                     pred_7d = predictions.get('short_term', {}).get('7_days', {})
                     pred_30d = predictions.get('medium_term', {}).get('30_days', {})
                     
-                    # Calculate changes from ACTUAL prices vs current price - FIXED LOGIC
+                    # Calculate changes from ACTUAL prices vs current price
+                    change_1d = 0
                     change_7d = 0
                     change_30d = 0
+                    
+                    if pred_1d.get('price'):
+                        change_1d = ((float(pred_1d['price']) - float(current_price)) / float(current_price)) * 100
+                    elif pred_1d.get('change_percent'):
+                        change_1d = float(pred_1d['change_percent'])
                     
                     if pred_7d.get('price'):
                         change_7d = ((float(pred_7d['price']) - float(current_price)) / float(current_price)) * 100
@@ -432,51 +439,50 @@ class PricePredictor:
                     elif pred_30d.get('change_percent'):
                         change_30d = float(pred_30d['change_percent'])
                     
-                    # TEMP DEBUG - will remove after fix
-                    print(f"🔧 TREND DEBUG: Current={current_price}, 7d={change_7d:.1f}%, 30d={change_30d:.1f}%")
-                    print(f"🔧 PRED DEBUG: 7d_price={pred_7d.get('price')}, 30d_price={pred_30d.get('price')}")
-                    print(f"🔧 CALC DEBUG: 7d_calc={(float(pred_7d['price']) - float(current_price)) / float(current_price) * 100 if pred_7d.get('price') else 'N/A'}, 30d_calc={(float(pred_30d['price']) - float(current_price)) / float(current_price) * 100 if pred_30d.get('price') else 'N/A'}")
+                    # Weighted average: 1d (30%), 7d (40%), 30d (30%)
+                    avg_change = (change_1d * 0.3 + change_7d * 0.4 + change_30d * 0.3)
                     
-                    # CORRECTED LOGIC: Simple and clear trend determination
-                    if change_7d > 2 and change_30d > 2:  # Both positive and significant
+                    # Primary logic: Use average change with thresholds
+                    if avg_change > 3:  # Strong positive
                         final_direction = "bullish"
-                        if change_7d > 8 and change_30d > 10:
+                        if avg_change > 8:
                             final_strength = "Strong Bullish"
-                        elif change_7d > 4 and change_30d > 5:
+                        elif avg_change > 5:
                             final_strength = "Moderate Bullish"
                         else:
                             final_strength = "Weak Bullish"
-                        signals.append(f"Both predictions bullish: 7d={change_7d:.1f}%, 30d={change_30d:.1f}%")
+                        signals.append(f"Positive trend: 1d={change_1d:.1f}%, 7d={change_7d:.1f}%, 30d={change_30d:.1f}%, avg={avg_change:.1f}%")
                         
-                    elif change_7d < -2 and change_30d < -2:  # Both negative and significant
+                    elif avg_change < -3:  # Strong negative
                         final_direction = "bearish"
-                        if change_7d < -8 and change_30d < -10:
+                        if avg_change < -8:
                             final_strength = "Strong Bearish"
-                        elif change_7d < -4 and change_30d < -5:
+                        elif avg_change < -5:
                             final_strength = "Moderate Bearish"
                         else:
                             final_strength = "Weak Bearish"
-                        signals.append(f"Both predictions bearish: 7d={change_7d:.1f}%, 30d={change_30d:.1f}%")
+                        signals.append(f"Negative trend: 1d={change_1d:.1f}%, 7d={change_7d:.1f}%, 30d={change_30d:.1f}%, avg={avg_change:.1f}%")
                         
-                    elif abs(change_7d) <= 2 and abs(change_30d) <= 2:  # Both small changes
+                    elif abs(avg_change) <= 1.5:  # Very small changes
                         final_direction = "neutral"
                         final_strength = "Neutral"
-                        signals.append(f"Small changes: 7d={change_7d:.1f}%, 30d={change_30d:.1f}%")
+                        signals.append(f"Sideways trend: 1d={change_1d:.1f}%, 7d={change_7d:.1f}%, 30d={change_30d:.1f}%, avg={avg_change:.1f}%")
                         
-                    else:  # Mixed signals - use average
-                        avg_change = (change_7d + change_30d) / 2
-                        if avg_change > 1:
+                    else:  # Weak signals - check consistency
+                        # Check majority direction for weak signals
+                        positive_count = sum(1 for x in [change_1d, change_7d, change_30d] if x > 0)
+                        if positive_count >= 2:  # Majority positive
                             final_direction = "bullish"
                             final_strength = "Weak Bullish"
-                            signals.append(f"Mixed but avg positive: 7d={change_7d:.1f}%, 30d={change_30d:.1f}%, avg={avg_change:.1f}%")
-                        elif avg_change < -1:
+                            signals.append(f"Weak bullish: 1d={change_1d:.1f}%, 7d={change_7d:.1f}%, 30d={change_30d:.1f}%")
+                        elif positive_count <= 1:  # Majority negative
                             final_direction = "bearish"
                             final_strength = "Weak Bearish"
-                            signals.append(f"Mixed but avg negative: 7d={change_7d:.1f}%, 30d={change_30d:.1f}%, avg={avg_change:.1f}%")
-                        else:
+                            signals.append(f"Weak bearish: 1d={change_1d:.1f}%, 7d={change_7d:.1f}%, 30d={change_30d:.1f}%")
+                        else:  # Exactly mixed
                             final_direction = "neutral"
                             final_strength = "Neutral"
-                            signals.append(f"Mixed neutral: 7d={change_7d:.1f}%, 30d={change_30d:.1f}%")
+                            signals.append(f"Mixed signals: 1d={change_1d:.1f}%, 7d={change_7d:.1f}%, 30d={change_30d:.1f}%")
                     
 
                         
@@ -493,6 +499,8 @@ class PricePredictor:
                         final_direction = "neutral"
                         final_strength = "Neutral"
                     signals.append(f"Exception fallback to technical analysis (score: {tech_score})")
+                    # Reset changes for fallback display
+                    change_1d = change_7d = change_30d = 0
             else:
                 # No predictions available - use technical analysis only
                 if tech_score >= 75:
@@ -522,20 +530,16 @@ class PricePredictor:
                     
                     if ai_analysis.get('ai_direction'):
                         ai_direction = ai_analysis['ai_direction']
-                        # TEMP DEBUG - will remove after fix
-                        print(f"🔧 AI DEBUG: AI wants {ai_direction}, current trend {final_direction} ({final_strength})")
-                        print(f"🔧 AI CONTEXT: pred_7d={change_7d:.1f}%, pred_30d={change_30d:.1f}%, final={final_direction}")
-                        
-                        # Only allow AI override if predictions are neutral or very weak
+                        # AI can enhance weak signals but not override strong price trends
                         if final_strength in ["Neutral", "Weak Bullish", "Weak Bearish"]:
-                            print(f"🔧 AI OVERRIDE: {final_direction} → {ai_direction} (weak signals)")
+                            # Allow AI to enhance weak signals
                             final_direction = ai_direction
                             final_strength = ai_analysis.get('ai_strength', final_strength)
-                            signals.append("AI override (weak signals)")
+                            signals.append(f"AI enhanced: {ai_direction}")
                         else:
-                            print(f"🔧 AI BLOCKED: Strong trend {final_direction} vs AI {ai_direction} (price-based trend wins)")
+                            # Strong price trends take priority
                             ai_insight = f" (AI suggests {ai_direction})"
-                            signals.append(f"AI insight: {ai_direction} (price trend stronger)")
+                            signals.append(f"AI insight: {ai_direction} (price trend priority)")
                         
                 except Exception as e:
                     print(f"⚠️ Gemini trend analysis failed: {e}")
@@ -557,9 +561,6 @@ class PricePredictor:
                 "prediction_based": True if predictions else False
             }
             
-            # TEMP DEBUG - will remove after fix
-            print(f"🔧 FINAL TREND: {final_direction} ({final_strength})")
-            print(f"🔧 LOGIC PATH: Used predictions={bool(predictions)}, change_7d={change_7d:.1f}%, change_30d={change_30d:.1f}%")
             return result
             
         except Exception as e:
