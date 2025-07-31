@@ -299,9 +299,13 @@ class MainAgent:
     
     # Helper methods với error handling
     def _safe_get_price_prediction(self, symbol: str):
-        """Safely get price prediction"""
+        """Safely get price prediction with LSTM enhancement"""
         try:
-            return self.price_predictor.predict_price(symbol)
+            # Use LSTM-enhanced prediction if available
+            if hasattr(self.price_predictor, 'lstm_predictor') and self.price_predictor.lstm_predictor:
+                return self.price_predictor.predict_price_enhanced(symbol)
+            else:
+                return self.price_predictor.predict_price(symbol)
         except Exception as e:
             return AgentErrorHandler.handle_prediction_error(symbol, e)
     

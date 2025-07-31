@@ -5,9 +5,17 @@ from datetime import datetime, timedelta
 import warnings
 warnings.filterwarnings('ignore')
 
+# Import LSTM enhancement
+try:
+    from agents.lstm_price_predictor import LSTMPricePredictor
+    LSTM_AVAILABLE = True
+except ImportError:
+    LSTM_AVAILABLE = False
+    print("⚠️ LSTM predictor not available. Using traditional methods only.")
+
 class PricePredictor:
     def __init__(self, vn_api=None, stock_info=None):
-        self.name = "Advanced Price Predictor Agent"
+        self.name = "Advanced Price Predictor Agent with LSTM"
         self.vn_api = vn_api
         self.stock_info = stock_info
         self.ai_agent = None  # Will be set by main_agent
@@ -17,10 +25,20 @@ class PricePredictor:
             'medium_term': [14, 30, 60],   # 2 tuần, 1 tháng, 2 tháng
             'long_term': [90, 180, 365]    # 3 tháng, 6 tháng, 1 năm
         }
+        
+        # Initialize LSTM predictor if available
+        if LSTM_AVAILABLE:
+            self.lstm_predictor = LSTMPricePredictor(vn_api)
+            print("✅ LSTM Price Predictor initialized")
+        else:
+            self.lstm_predictor = None
     
     def set_ai_agent(self, ai_agent):
         """Set AI agent for enhanced predictions"""
         self.ai_agent = ai_agent
+        # Also set AI agent for LSTM predictor
+        if self.lstm_predictor:
+            self.lstm_predictor.set_ai_agent(ai_agent)
     
     def predict_comprehensive(self, symbol: str, vn_api=None, stock_info=None):
         """Dự đoán giá toàn diện theo từng khoảng thời gian
@@ -139,11 +157,11 @@ class PricePredictor:
             # Apply machine learning enhancements
             ml_predictions = self._apply_ml_predictions(hist_data, technical_indicators)
             
-            # Phân tích xu hướng và pattern
-            trend_analysis = self._analyze_market_trend(hist_data)
-            
             # Dự đoán giá theo từng khoảng thời gian với ML enhancement
             predictions = self._generate_multi_timeframe_predictions(hist_data, technical_indicators, ml_predictions)
+            
+            # Phân tích xu hướng dựa trên predictions (AFTER predictions)
+            trend_analysis = self._analyze_market_trend(hist_data, predictions)
             
             # Tính toán độ tin cậy với ML validation
             confidence_scores = self._calculate_confidence_scores(hist_data, technical_indicators, ml_predictions)
@@ -198,11 +216,11 @@ class PricePredictor:
             # Tính toán các chỉ báo kỹ thuật nâng cao
             technical_indicators = self._calculate_advanced_indicators(hist)
             
-            # Phân tích xu hướng và pattern
-            trend_analysis = self._analyze_market_trend(hist)
-            
             # Dự đoán giá theo từng khoảng thời gian
             predictions = self._generate_multi_timeframe_predictions(hist, technical_indicators)
+            
+            # Phân tích xu hướng dựa trên predictions (AFTER predictions)
+            trend_analysis = self._analyze_market_trend(hist, predictions)
             
             # Tính toán độ tin cậy
             confidence_scores = self._calculate_confidence_scores(hist, technical_indicators)
@@ -301,8 +319,8 @@ class PricePredictor:
         except Exception as e:
             return {"error": f"Indicator calculation error: {str(e)}"}
     
-    def _analyze_market_trend(self, data):
-        """Phân tích xu hướng thị trường với AI Gemini integration"""
+    def _analyze_market_trend(self, data, predictions=None):
+        """Phân tích xu hướng thị trường dựa trên dự đoán giá thực tế"""
         try:
             current_price = data['close'].iloc[-1]
             
@@ -390,27 +408,112 @@ class PricePredictor:
                 tech_score += 10
                 signals.append("Volume supporting")
             
-            # Determine base trend
-            if tech_score >= 75:
-                base_direction = "bullish"
-                base_strength = "Strong Bullish"
-            elif tech_score >= 60:
-                base_direction = "bullish"
-                base_strength = "Moderate Bullish"
-            elif tech_score >= 40:
-                base_direction = "neutral"
-                base_strength = "Neutral"
-            elif tech_score >= 25:
-                base_direction = "bearish"
-                base_strength = "Moderate Bearish"
+            # PRIORITY: Use actual price predictions to determine trend
+            final_direction = "neutral"
+            final_strength = "Neutral"
+            
+            if predictions:
+                try:
+                    # Get predictions and calculate changes from current price
+                    pred_7d = predictions.get('short_term', {}).get('7_days', {})
+                    pred_30d = predictions.get('medium_term', {}).get('30_days', {})
+                    
+                    # Calculate changes from ACTUAL prices vs current price - FIXED LOGIC
+                    change_7d = 0
+                    change_30d = 0
+                    
+                    if pred_7d.get('price'):
+                        change_7d = ((float(pred_7d['price']) - float(current_price)) / float(current_price)) * 100
+                    elif pred_7d.get('change_percent'):
+                        change_7d = float(pred_7d['change_percent'])
+                    
+                    if pred_30d.get('price'):
+                        change_30d = ((float(pred_30d['price']) - float(current_price)) / float(current_price)) * 100
+                    elif pred_30d.get('change_percent'):
+                        change_30d = float(pred_30d['change_percent'])
+                    
+                    # TEMP DEBUG - will remove after fix
+                    print(f"🔧 TREND DEBUG: Current={current_price}, 7d={change_7d:.1f}%, 30d={change_30d:.1f}%")
+                    print(f"🔧 PRED DEBUG: 7d_price={pred_7d.get('price')}, 30d_price={pred_30d.get('price')}")
+                    print(f"🔧 CALC DEBUG: 7d_calc={(float(pred_7d['price']) - float(current_price)) / float(current_price) * 100 if pred_7d.get('price') else 'N/A'}, 30d_calc={(float(pred_30d['price']) - float(current_price)) / float(current_price) * 100 if pred_30d.get('price') else 'N/A'}")
+                    
+                    # CORRECTED LOGIC: Simple and clear trend determination
+                    if change_7d > 2 and change_30d > 2:  # Both positive and significant
+                        final_direction = "bullish"
+                        if change_7d > 8 and change_30d > 10:
+                            final_strength = "Strong Bullish"
+                        elif change_7d > 4 and change_30d > 5:
+                            final_strength = "Moderate Bullish"
+                        else:
+                            final_strength = "Weak Bullish"
+                        signals.append(f"Both predictions bullish: 7d={change_7d:.1f}%, 30d={change_30d:.1f}%")
+                        
+                    elif change_7d < -2 and change_30d < -2:  # Both negative and significant
+                        final_direction = "bearish"
+                        if change_7d < -8 and change_30d < -10:
+                            final_strength = "Strong Bearish"
+                        elif change_7d < -4 and change_30d < -5:
+                            final_strength = "Moderate Bearish"
+                        else:
+                            final_strength = "Weak Bearish"
+                        signals.append(f"Both predictions bearish: 7d={change_7d:.1f}%, 30d={change_30d:.1f}%")
+                        
+                    elif abs(change_7d) <= 2 and abs(change_30d) <= 2:  # Both small changes
+                        final_direction = "neutral"
+                        final_strength = "Neutral"
+                        signals.append(f"Small changes: 7d={change_7d:.1f}%, 30d={change_30d:.1f}%")
+                        
+                    else:  # Mixed signals - use average
+                        avg_change = (change_7d + change_30d) / 2
+                        if avg_change > 1:
+                            final_direction = "bullish"
+                            final_strength = "Weak Bullish"
+                            signals.append(f"Mixed but avg positive: 7d={change_7d:.1f}%, 30d={change_30d:.1f}%, avg={avg_change:.1f}%")
+                        elif avg_change < -1:
+                            final_direction = "bearish"
+                            final_strength = "Weak Bearish"
+                            signals.append(f"Mixed but avg negative: 7d={change_7d:.1f}%, 30d={change_30d:.1f}%, avg={avg_change:.1f}%")
+                        else:
+                            final_direction = "neutral"
+                            final_strength = "Neutral"
+                            signals.append(f"Mixed neutral: 7d={change_7d:.1f}%, 30d={change_30d:.1f}%")
+                    
+
+                        
+                except Exception as e:
+                    print(f"⚠️ Prediction-based trend analysis failed: {e}")
+                    # Fallback to technical analysis
+                    if tech_score >= 65:
+                        final_direction = "bullish"
+                        final_strength = "Moderate Bullish"
+                    elif tech_score <= 35:
+                        final_direction = "bearish"
+                        final_strength = "Moderate Bearish"
+                    else:
+                        final_direction = "neutral"
+                        final_strength = "Neutral"
+                    signals.append(f"Exception fallback to technical analysis (score: {tech_score})")
             else:
-                base_direction = "bearish"
-                base_strength = "Strong Bearish"
+                # No predictions available - use technical analysis only
+                if tech_score >= 75:
+                    final_direction = "bullish"
+                    final_strength = "Strong Bullish"
+                elif tech_score >= 60:
+                    final_direction = "bullish"
+                    final_strength = "Moderate Bullish"
+                elif tech_score >= 40:
+                    final_direction = "neutral"
+                    final_strength = "Neutral"
+                elif tech_score >= 25:
+                    final_direction = "bearish"
+                    final_strength = "Moderate Bearish"
+                else:
+                    final_direction = "bearish"
+                    final_strength = "Strong Bearish"
+                signals.append(f"Technical analysis fallback (score: {tech_score})")
             
-            # AI Gemini enhancement
-            final_direction = base_direction
-            final_strength = base_strength
-            
+            # AI can provide additional insight but NOT override clear price trends
+            ai_insight = ""
             if self.ai_agent:
                 try:
                     ai_analysis = self._get_gemini_trend_analysis(
@@ -418,14 +521,28 @@ class PricePredictor:
                     )
                     
                     if ai_analysis.get('ai_direction'):
-                        final_direction = ai_analysis['ai_direction']
-                        final_strength = ai_analysis.get('ai_strength', base_strength)
-                        signals.append("Gemini AI enhanced")
+                        ai_direction = ai_analysis['ai_direction']
+                        # TEMP DEBUG - will remove after fix
+                        print(f"🔧 AI DEBUG: AI wants {ai_direction}, current trend {final_direction} ({final_strength})")
+                        print(f"🔧 AI CONTEXT: pred_7d={change_7d:.1f}%, pred_30d={change_30d:.1f}%, final={final_direction}")
+                        
+                        # Only allow AI override if predictions are neutral or very weak
+                        if final_strength in ["Neutral", "Weak Bullish", "Weak Bearish"]:
+                            print(f"🔧 AI OVERRIDE: {final_direction} → {ai_direction} (weak signals)")
+                            final_direction = ai_direction
+                            final_strength = ai_analysis.get('ai_strength', final_strength)
+                            signals.append("AI override (weak signals)")
+                        else:
+                            print(f"🔧 AI BLOCKED: Strong trend {final_direction} vs AI {ai_direction} (price-based trend wins)")
+                            ai_insight = f" (AI suggests {ai_direction})"
+                            signals.append(f"AI insight: {ai_direction} (price trend stronger)")
                         
                 except Exception as e:
                     print(f"⚠️ Gemini trend analysis failed: {e}")
             
-            return {
+
+            
+            result = {
                 "direction": final_direction,
                 "strength": final_strength,
                 "score": f"{tech_score}/100",
@@ -436,8 +553,14 @@ class PricePredictor:
                 "momentum_20d": round(momentum_20, 2),
                 "volume_trend": round(volume_trend, 2),
                 "support_level": round(data['close'].rolling(20).min().iloc[-1], 2),
-                "resistance_level": round(data['close'].rolling(20).max().iloc[-1], 2)
+                "resistance_level": round(data['close'].rolling(20).max().iloc[-1], 2),
+                "prediction_based": True if predictions else False
             }
+            
+            # TEMP DEBUG - will remove after fix
+            print(f"🔧 FINAL TREND: {final_direction} ({final_strength})")
+            print(f"🔧 LOGIC PATH: Used predictions={bool(predictions)}, change_7d={change_7d:.1f}%, change_30d={change_30d:.1f}%")
+            return result
             
         except Exception as e:
             return {"error": f"Trend analysis error: {str(e)}"}
@@ -446,22 +569,22 @@ class PricePredictor:
         """Get Gemini AI trend analysis"""
         try:
             context = f"""
-Phân tích xu hướng kỹ thuật:
+Phân tích xu hướng kỹ thuật cho quyết định đầu tư:
 - Điểm kỹ thuật: {tech_score}/100
-- RSI: {rsi:.1f}
-- MACD: {macd:.4f}
+- RSI: {rsi:.1f} ({'Quá mua' if rsi > 70 else 'Quá bán' if rsi < 30 else 'Bình thường'})
+- MACD: {macd:.4f} ({'Tích cực' if macd > 0 else 'Tiêu cực'})
 - Momentum 5 ngày: {momentum_5:.1f}%
 - Momentum 20 ngày: {momentum_20:.1f}%
 - Volume trend: {volume_trend:.2f}x
 
-Dựa trên dữ liệu kỹ thuật, đánh giá xu hướng:
-- Nếu tín hiệu mạnh → BULLISH/BEARISH
-- Nếu tín hiệu yếu → NEUTRAL
-- Nếu tín hiệu trái chiều → MIXED
+Hãy đưa ra quyết định xu hướng rõ ràng:
+- Điểm ≥65: Xu hướng TĂNG mạnh
+- Điểm ≤35: Xu hướng GIẢM mạnh  
+- Điểm 36-64: Phân tích kỹ các chỉ báo
 
-TREND: [BULLISH/BEARISH/NEUTRAL]
+TREND: [BULLISH/BEARISH/NEUTRAL - phải chọn 1 trong 3]
 STRENGTH: [Strong/Moderate/Weak]
-REASON: [lý do ngắn gọn]
+REASON: [lý do cụ thể dựa trên chỉ báo]
 """
             
             ai_result = self.ai_agent.generate_with_fallback(context, 'trend_analysis', max_tokens=200)
@@ -473,12 +596,17 @@ REASON: [lý do ngắn gọn]
                 ai_direction = None
                 ai_strength = None
                 
-                if 'TREND: BULLISH' in response.upper():
+                if 'TREND: BULLISH' in response.upper() or 'XU HƯỚNG TĂNG' in response.upper():
                     ai_direction = 'bullish'
-                elif 'TREND: BEARISH' in response.upper():
+                elif 'TREND: BEARISH' in response.upper() or 'XU HƯỚNG GIẢM' in response.upper():
                     ai_direction = 'bearish'
-                elif 'TREND: NEUTRAL' in response.upper():
+                elif 'TREND: NEUTRAL' in response.upper() or 'TRUNG TÍNH' in response.upper():
                     ai_direction = 'neutral'
+                # Additional patterns for stronger detection
+                elif 'TĂNG MẠNH' in response.upper() or 'BULLISH' in response.upper():
+                    ai_direction = 'bullish'
+                elif 'GIẢM MẠNH' in response.upper() or 'BEARISH' in response.upper():
+                    ai_direction = 'bearish'
                 
                 if 'STRENGTH: STRONG' in response.upper():
                     ai_strength = f"Strong {ai_direction.title()}" if ai_direction else "Strong"
@@ -732,8 +860,37 @@ REASON: [lý do ngắn gọn]
         return self.predict_comprehensive(symbol, self.vn_api, self.stock_info)
     
     def predict_price_enhanced(self, symbol: str, days: int = 30, risk_tolerance: int = 50, time_horizon: str = "Trung hạn", investment_amount: int = 10000000):
-        """Enhanced price prediction with AI analysis and risk-adjusted recommendations"""
-        # Use comprehensive prediction which returns ALL data needed by UI
+        """Enhanced price prediction with LSTM priority and AI analysis"""
+        # Try LSTM first if available and prioritize it
+        if self.lstm_predictor:
+            try:
+                lstm_result = self.lstm_predictor.predict_with_ai_enhancement(symbol, days)
+                if not lstm_result.get('error') and lstm_result['model_performance']['confidence'] > 20:
+                    # LSTM successful with acceptable confidence - use it as primary
+                    combined_result = self._combine_lstm_with_traditional(lstm_result, symbol)
+                    
+                    # Add investment profile analysis
+                    combined_result['risk_adjusted_analysis'] = self._get_risk_adjusted_analysis(
+                        combined_result, risk_tolerance, time_horizon, investment_amount
+                    )
+                    
+                    # Set main prediction values from LSTM
+                    lstm_30d = lstm_result['predictions'].get('medium_term', {}).get('30_days', {})
+                    if lstm_30d:
+                        combined_result['predicted_price'] = lstm_30d['price']
+                        combined_result['change_percent'] = ((lstm_30d['price'] - combined_result['current_price']) / combined_result['current_price']) * 100
+                        combined_result['timeframe'] = f"{days} days"
+                        combined_result['confidence'] = lstm_result['model_performance']['confidence']
+                        combined_result['trend'] = combined_result.get('trend_analysis', {}).get('direction', 'neutral')
+                        combined_result['method_used'] = 'LSTM Primary'
+                    
+                    return combined_result
+                else:
+                    print(f"⚠️ LSTM confidence too low ({lstm_result.get('model_performance', {}).get('confidence', 0)}%) or error, falling back to traditional")
+            except Exception as e:
+                print(f"⚠️ LSTM prediction failed: {e}, falling back to traditional")
+        
+        # Fallback to traditional comprehensive prediction
         result = self.predict_comprehensive(symbol, self.vn_api, self.stock_info)
         
         if "error" in result:
@@ -789,6 +946,169 @@ REASON: [lý do ngắn gọn]
             result['ai_error'] = 'AI agent not configured'
         
         return result
+    
+    def _combine_lstm_with_traditional(self, lstm_result: dict, symbol: str):
+        """Combine LSTM predictions with traditional technical analysis"""
+        try:
+            # Get traditional analysis for technical indicators and risk metrics
+            traditional_result = self.predict_comprehensive(symbol, self.vn_api, self.stock_info)
+            
+            if traditional_result.get('error'):
+                # If traditional fails, return LSTM only
+                return lstm_result
+            
+            # Create combined result
+            combined_result = {
+                'symbol': symbol,
+                'current_price': lstm_result['current_price'],
+                'market': traditional_result.get('market', 'Unknown'),
+                'data_source': f"LSTM + {traditional_result.get('data_source', 'Technical')}",
+                'analysis_date': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+                
+                # Use traditional technical indicators
+                'technical_indicators': traditional_result.get('technical_indicators', {}),
+                'trend_analysis': traditional_result.get('trend_analysis', {}),
+                'risk_analysis': traditional_result.get('risk_analysis', {}),
+                
+                # Use LSTM predictions as primary
+                'predictions': lstm_result['predictions'],
+                'lstm_confidence': lstm_result['model_performance']['confidence'],
+                'lstm_method': lstm_result['method'],
+                
+                # Combine confidence scores
+                'confidence_scores': self._combine_confidence_scores(
+                    lstm_result['model_performance']['confidence'],
+                    traditional_result.get('confidence_scores', {})
+                ),
+                
+                # Enhanced recommendations
+                'recommendations': self._generate_combined_recommendations(
+                    lstm_result, traditional_result
+                ),
+                
+                # Method tracking
+                'prediction_methods': ['LSTM Neural Network', 'Technical Analysis'],
+                'primary_method': 'LSTM Enhanced'
+            }
+            
+            # Add AI enhancements if available
+            if lstm_result.get('ai_enhanced'):
+                combined_result['ai_enhanced'] = True
+                combined_result['ai_lstm_analysis'] = lstm_result.get('ai_lstm_analysis', '')
+                combined_result['ai_model_used'] = lstm_result.get('ai_model_used', 'Gemini')
+            
+            return combined_result
+            
+        except Exception as e:
+            print(f"⚠️ Failed to combine LSTM with traditional: {e}")
+            return lstm_result
+    
+    def _combine_confidence_scores(self, lstm_confidence: float, traditional_scores: dict):
+        """Combine LSTM and traditional confidence scores"""
+        try:
+            # Weight LSTM higher for short/medium term, traditional for long term
+            combined_scores = {
+                'short_term': round(lstm_confidence * 0.7 + traditional_scores.get('short_term', 50) * 0.3, 1),
+                'medium_term': round(lstm_confidence * 0.6 + traditional_scores.get('medium_term', 50) * 0.4, 1),
+                'long_term': round(lstm_confidence * 0.3 + traditional_scores.get('long_term', 50) * 0.7, 1),
+                'lstm_confidence': lstm_confidence,
+                'combined_method': True
+            }
+            
+            return combined_scores
+            
+        except Exception as e:
+            return {'short_term': 50, 'medium_term': 50, 'long_term': 50, 'error': str(e)}
+    
+    def _generate_combined_recommendations(self, lstm_result: dict, traditional_result: dict):
+        """Generate recommendations combining LSTM and traditional analysis"""
+        try:
+            lstm_predictions = lstm_result.get('predictions', {})
+            traditional_recs = traditional_result.get('recommendations', {})
+            current_price = lstm_result['current_price']
+            
+            recommendations = {}
+            
+            # Short-term: Use LSTM primarily
+            lstm_7d = lstm_predictions.get('short_term', {}).get('7_days', {})
+            if lstm_7d:
+                change_7d = ((lstm_7d['price'] - current_price) / current_price) * 100
+                if change_7d > 3:
+                    short_rec = "Buy (LSTM)"
+                elif change_7d > 1:
+                    short_rec = "Weak Buy (LSTM)"
+                elif change_7d > -1:
+                    short_rec = "Hold (LSTM)"
+                elif change_7d > -3:
+                    short_rec = "Weak Sell (LSTM)"
+                else:
+                    short_rec = "Sell (LSTM)"
+            else:
+                short_rec = traditional_recs.get('short_term', {}).get('recommendation', 'Hold')
+            
+            # Medium-term: Combine LSTM and traditional
+            lstm_30d = lstm_predictions.get('medium_term', {}).get('30_days', {})
+            traditional_medium = traditional_recs.get('medium_term', {}).get('recommendation', 'Hold')
+            
+            if lstm_30d:
+                change_30d = ((lstm_30d['price'] - current_price) / current_price) * 100
+                if change_30d > 5 and 'Buy' in traditional_medium:
+                    medium_rec = "Strong Buy (Combined)"
+                elif change_30d > 2:
+                    medium_rec = f"Buy (LSTM + {traditional_medium})"
+                elif change_30d > -2:
+                    medium_rec = f"Hold (LSTM + {traditional_medium})"
+                else:
+                    medium_rec = f"Sell (LSTM + {traditional_medium})"
+            else:
+                medium_rec = traditional_medium
+            
+            # Long-term: Use traditional primarily
+            long_rec = traditional_recs.get('long_term', {}).get('recommendation', 'Hold')
+            
+            recommendations = {
+                'short_term': {
+                    'recommendation': short_rec,
+                    'confidence': f"{lstm_result['model_performance']['confidence']:.1f}%",
+                    'timeframe': '1-7 days',
+                    'method': 'LSTM Primary'
+                },
+                'medium_term': {
+                    'recommendation': medium_rec,
+                    'confidence': f"{(lstm_result['model_performance']['confidence'] + traditional_result.get('confidence_scores', {}).get('medium_term', 50)) / 2:.1f}%",
+                    'timeframe': '2 weeks - 2 months',
+                    'method': 'LSTM + Technical'
+                },
+                'long_term': {
+                    'recommendation': long_rec,
+                    'confidence': traditional_recs.get('long_term', {}).get('confidence', '50%'),
+                    'timeframe': '3-12 months',
+                    'method': 'Technical Analysis'
+                },
+                'overall_sentiment': self._determine_combined_sentiment(short_rec, medium_rec, long_rec),
+                'risk_note': traditional_recs.get('risk_note', '📊 Combined LSTM + Technical Analysis')
+            }
+            
+            return recommendations
+            
+        except Exception as e:
+            return {'error': f'Combined recommendation error: {str(e)}'}
+    
+    def _determine_combined_sentiment(self, short: str, medium: str, long: str):
+        """Determine overall sentiment from combined recommendations"""
+        try:
+            buy_count = sum(1 for rec in [short, medium, long] if 'Buy' in rec)
+            sell_count = sum(1 for rec in [short, medium, long] if 'Sell' in rec)
+            
+            if buy_count >= 2:
+                return "Bullish (LSTM Enhanced)"
+            elif sell_count >= 2:
+                return "Bearish (LSTM Enhanced)"
+            else:
+                return "Neutral (Mixed Signals)"
+                
+        except Exception as e:
+            return "Neutral"
     
     def _get_risk_adjusted_analysis(self, result: dict, risk_tolerance: int, time_horizon: str, investment_amount: int):
         """Generate risk-adjusted analysis based on user profile"""
