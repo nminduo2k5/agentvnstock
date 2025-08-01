@@ -155,7 +155,7 @@ def display_price_prediction(pred):
         return
     
     # Show prediction method info
-    method = pred.get('primary_method', pred.get('method', 'Technical Analysis'))
+    method = pred.get('primary_method', pred.get('method_used', pred.get('method', 'Technical Analysis')))
     if 'LSTM' in method:
         st.success(f"🧠 {method} - Enhanced with Neural Network")
         if pred.get('lstm_confidence'):
@@ -163,11 +163,10 @@ def display_price_prediction(pred):
     else:
         st.info(f"📈 Method: {method}")
     
-    # Extract ALL data from price_predictor agent - NO calculations here
+    # Extract data from price_predictor agent
     current_price = pred.get('current_price', 0)
-    predicted_price = pred.get('predicted_price', 0)
-    trend = pred.get('trend', 'neutral')
-    confidence = pred.get('confidence', 50)
+    predicted_price = pred.get('predicted_price', current_price)
+    confidence = pred.get('confidence', pred.get('confidence_scores', {}).get('medium_term', 50))
     data_source = pred.get('data_source', 'Unknown')
     change_percent = pred.get('change_percent', 0)
     
@@ -180,41 +179,161 @@ def display_price_prediction(pred):
     rsi = tech_indicators.get('rsi', 50)
     macd = tech_indicators.get('macd', 0)
     
-    # Support/resistance from agent
+    # Trend analysis from agent (CORRECTED to use trend_analysis data)
     trend_analysis = pred.get('trend_analysis', {})
+    trend = trend_analysis.get('direction', 'neutral')  # Use direction from trend_analysis
+    trend_strength = trend_analysis.get('strength', 'Medium')
+    tech_score = trend_analysis.get('score', '50/100')
+    signals = trend_analysis.get('signals', [])
+    momentum_5d = trend_analysis.get('momentum_5d', 0)
+    momentum_20d = trend_analysis.get('momentum_20d', 0)
+    volume_trend = trend_analysis.get('volume_trend', 0)
+    prediction_based = trend_analysis.get('prediction_based', False)
+    
+    # Support/resistance from trend_analysis
     support = trend_analysis.get('support_level', current_price)
     resistance = trend_analysis.get('resistance_level', current_price)
     
-    # Multi-timeframe predictions from agent (exact keys from price_predictor)
-    predictions = pred.get('predictions', {})
-    target_1d = predictions.get('short_term', {}).get('1_days', {}).get('price', predicted_price)
-    target_1w = predictions.get('short_term', {}).get('7_days', {}).get('price', predicted_price) 
-    target_1m = predictions.get('medium_term', {}).get('30_days', {}).get('price', predicted_price)
-    target_3m = predictions.get('long_term', {}).get('90_days', {}).get('price', predicted_price)
+    # RSI and MACD from trend_analysis (more accurate than technical_indicators)
+    trend_rsi = trend_analysis.get('rsi', rsi)
+    trend_macd = trend_analysis.get('macd', macd)
     
-    # If no multi-timeframe data, use single predicted_price
-    if not predictions:
-        target_1d = target_1w = target_1m = target_3m = predicted_price
+    # Multi-timeframe predictions from agent
+    predictions = pred.get('predictions', {})
+    
+    # Get predictions from correct time periods based on price_predictor structure
+    target_1d = predictions.get('short_term', {}).get('1_days', {}).get('price', current_price)
+    target_1w = predictions.get('short_term', {}).get('7_days', {}).get('price', current_price) 
+    target_1m = predictions.get('medium_term', {}).get('30_days', {}).get('price', current_price)
+    target_3m = predictions.get('long_term', {}).get('90_days', {}).get('price', current_price)
+    
+    # If specific periods not found, try alternative periods
+    if target_1d == current_price:
+        target_1d = predictions.get('short_term', {}).get('3_days', {}).get('price', current_price)
+    if target_1w == current_price:
+        target_1w = predictions.get('short_term', {}).get('7_days', {}).get('price', current_price)
+    if target_1m == current_price:
+        target_1m = predictions.get('medium_term', {}).get('14_days', {}).get('price', current_price)
+        if target_1m == current_price:
+            target_1m = predictions.get('medium_term', {}).get('60_days', {}).get('price', current_price)
+    if target_3m == current_price:
+        target_3m = predictions.get('long_term', {}).get('180_days', {}).get('price', current_price)
     
     colors = {'bullish': '#28a745', 'bearish': '#dc3545', 'neutral': '#ffc107'}
     icons = {'bullish': '📈', 'bearish': '📉', 'neutral': '📊'}
     
+    # Enhanced prediction display with trend analysis
+    prediction_method = "🧠 Dự đoán AI" if prediction_based else "📊 Phân tích kỹ thuật"
+    
+    # Main trend header
     st.markdown(f"""
     <div style="background: {colors.get(trend, '#ffc107')}; color: white; padding: 20px; border-radius: 12px; margin: 10px 0;">
         <div style="text-align: center;">
             <div style="font-size: 2.5em; margin-bottom: 10px;">{icons.get(trend, '📊')}</div>
-            <h3 style="margin: 0; font-size: 24px;">DỰ ĐOÁN GIÁ</h3>
-            <h2 style="margin: 10px 0; font-size: 28px;">{trend.upper()}</h2>
-            <p style="margin: 5px 0; font-size: 18px; opacity: 0.9;">Giá dự đoán 1 ngày: {target_1d:,.2f} VND</p>
-            <p style="margin: 5px 0; font-size: 18px; opacity: 0.9;">Giá dự đoán 1 tuần: {target_1w:,.2f} VND</p>
-            <p style="margin: 5px 0; font-size: 18px; opacity: 0.9;">Giá dự đoán 1 tháng: {target_1m:,.2f} VND</p>
-            <p style="margin: 5px 0; font-size: 18px; opacity: 0.9;">Giá dự đoán 3 tháng: {target_3m:,.2f} VND</p>
+            <h3 style="margin: 0; font-size: 24px;">DỰ ĐOÁN GIÁ - {prediction_method}</h3>
+            <h2 style="margin: 10px 0; font-size: 28px;">{trend.upper()} - {trend_strength}</h2>
+            <p style="margin: 5px 0; font-size: 16px; opacity: 0.9;">Điểm kỹ thuật: {tech_score}</p>
             <p style="margin: 5px 0; font-size: 14px; opacity: 0.8;">Độ tin cậy: {confidence:.1f}%</p>
         </div>
     </div>
     """, unsafe_allow_html=True)
     
-    # Detailed prediction metrics
+    # Prediction columns for different timeframes
+    st.markdown("### 📊 Dự đoán giá theo thời gian")
+    
+    # Calculate percentage changes - use actual predictions data if available
+    change_1d = predictions.get('short_term', {}).get('1_days', {}).get('change_percent', 
+                ((target_1d - current_price) / current_price * 100) if current_price > 0 else 0)
+    change_1w = predictions.get('short_term', {}).get('7_days', {}).get('change_percent',
+                ((target_1w - current_price) / current_price * 100) if current_price > 0 else 0)
+    change_1m = predictions.get('medium_term', {}).get('30_days', {}).get('change_percent',
+                ((target_1m - current_price) / current_price * 100) if current_price > 0 else 0)
+    change_3m = predictions.get('long_term', {}).get('90_days', {}).get('change_percent',
+                ((target_3m - current_price) / current_price * 100) if current_price > 0 else 0)
+    
+    col1, col2, col3, col4 = st.columns(4)
+    
+    with col1:
+        # 1 Day prediction
+        if abs(change_1d) < 0.5:  # Neutral if change is less than 0.5%
+            color_1d = '#ffc107'
+            icon_1d = '📊'
+        elif change_1d >= 0:
+            color_1d = '#28a745'
+            icon_1d = '📈'
+        else:
+            color_1d = '#dc3545'
+            icon_1d = '📉'
+        st.markdown(f"""
+        <div style="background: {color_1d}; color: white; padding: 15px; border-radius: 10px; text-align: center; margin: 5px 0;">
+            <div style="font-size: 1.5em; margin-bottom: 5px;">{icon_1d}</div>
+            <h4 style="margin: 0; font-size: 16px;">1 NGÀY</h4>
+            <p style="margin: 5px 0; font-size: 18px; font-weight: bold;">{target_1d:,.2f} VND</p>
+            <p style="margin: 0; font-size: 14px; opacity: 0.9;">{change_1d:+.2f}%</p>
+        </div>
+        """, unsafe_allow_html=True)
+    
+    with col2:
+        # 1 Week prediction
+        if abs(change_1w) < 1.0:  # Neutral if change is less than 1%
+            color_1w = '#ffc107'
+            icon_1w = '📊'
+        elif change_1w >= 0:
+            color_1w = '#28a745'
+            icon_1w = '📈'
+        else:
+            color_1w = '#dc3545'
+            icon_1w = '📉'
+        st.markdown(f"""
+        <div style="background: {color_1w}; color: white; padding: 15px; border-radius: 10px; text-align: center; margin: 5px 0;">
+            <div style="font-size: 1.5em; margin-bottom: 5px;">{icon_1w}</div>
+            <h4 style="margin: 0; font-size: 16px;">1 TUẦN</h4>
+            <p style="margin: 5px 0; font-size: 18px; font-weight: bold;">{target_1w:,.2f} VND</p>
+            <p style="margin: 0; font-size: 14px; opacity: 0.9;">{change_1w:+.2f}%</p>
+        </div>
+        """, unsafe_allow_html=True)
+    
+    with col3:
+        # 1 Month prediction
+        if abs(change_1m) < 2.0:  # Neutral if change is less than 2%
+            color_1m = '#ffc107'
+            icon_1m = '📊'
+        elif change_1m >= 0:
+            color_1m = '#28a745'
+            icon_1m = '📈'
+        else:
+            color_1m = '#dc3545'
+            icon_1m = '📉'
+        st.markdown(f"""
+        <div style="background: {color_1m}; color: white; padding: 15px; border-radius: 10px; text-align: center; margin: 5px 0;">
+            <div style="font-size: 1.5em; margin-bottom: 5px;">{icon_1m}</div>
+            <h4 style="margin: 0; font-size: 16px;">1 THÁNG</h4>
+            <p style="margin: 5px 0; font-size: 18px; font-weight: bold;">{target_1m:,.2f} VND</p>
+            <p style="margin: 0; font-size: 14px; opacity: 0.9;">{change_1m:+.2f}%</p>
+        </div>
+        """, unsafe_allow_html=True)
+    
+    with col4:
+        # 3 Months prediction
+        if abs(change_3m) < 3.0:  # Neutral if change is less than 3%
+            color_3m = '#ffc107'
+            icon_3m = '📊'
+        elif change_3m >= 0:
+            color_3m = '#28a745'
+            icon_3m = '📈'
+        else:
+            color_3m = '#dc3545'
+            icon_3m = '📉'
+        st.markdown(f"""
+        <div style="background: {color_3m}; color: white; padding: 15px; border-radius: 10px; text-align: center; margin: 5px 0;">
+            <div style="font-size: 1.5em; margin-bottom: 5px;">{icon_3m}</div>
+            <h4 style="margin: 0; font-size: 16px;">3 THÁNG</h4>
+            <p style="margin: 5px 0; font-size: 18px; font-weight: bold;">{target_3m:,.2f} VND</p>
+            <p style="margin: 0; font-size: 14px; opacity: 0.9;">{change_3m:+.2f}%</p>
+        </div>
+        """, unsafe_allow_html=True)
+    
+    # Enhanced detailed prediction metrics with trend analysis
     col1, col2, col3, col4 = st.columns(4)
     with col1:
         st.metric("Mục tiêu 1 tuần", f"{target_1w:,.2f}")
@@ -224,16 +343,62 @@ def display_price_prediction(pred):
         st.metric("Kháng cự", f"{resistance:,.2f}")
     with col3:
         st.metric("Mục tiêu 3 tháng", f"{target_3m:,.2f}")
-        st.metric("RSI", f"{rsi:.2f}")
+        st.metric("RSI", f"{trend_rsi:.1f}")
     with col4:
         st.metric("Mục tiêu 1 ngày", f"{target_1d:,.2f}")
-        st.metric("RSI", f"{rsi:.2f}")
+        st.metric("MACD", f"{trend_macd:.4f}")
+    
+    # Additional momentum and volume metrics
+    col5, col6, col7, col8 = st.columns(4)
+    with col5:
+        momentum_5_color = "normal" if momentum_5d >= 0 else "inverse"
+        st.metric("Momentum 5D", f"{momentum_5d:.2f}%", delta=f"{momentum_5d:.2f}%", delta_color=momentum_5_color)
+    with col6:
+        momentum_20_color = "normal" if momentum_20d >= 0 else "inverse"
+        st.metric("Momentum 20D", f"{momentum_20d:.2f}%", delta=f"{momentum_20d:.2f}%", delta_color=momentum_20_color)
+    with col7:
+        volume_color = "normal" if volume_trend >= 0 else "inverse"
+        st.metric("Volume Trend", f"{volume_trend:.2f}", delta=f"{volume_trend:.2f}", delta_color=volume_color)
+    with col8:
+        st.metric("Độ mạnh", trend_strength)
    
+    # Technical signals display
+    if signals:
+        st.markdown("### 📊 Tín hiệu kỹ thuật")
+        signal_cols = st.columns(min(len(signals), 4))
+        for i, signal in enumerate(signals[:4]):  # Show max 4 signals
+            with signal_cols[i % 4]:
+                # Determine signal color and icon
+                if any(word in signal.lower() for word in ['mua', 'buy', 'tăng', 'bullish']):
+                    signal_color = '#28a745'
+                    signal_icon = '🟢'
+                elif any(word in signal.lower() for word in ['bán', 'sell', 'giảm', 'bearish']):
+                    signal_color = '#dc3545'
+                    signal_icon = '🔴'
+                else:
+                    signal_color = '#ffc107'
+                    signal_icon = '🟡'
+                
+                st.markdown(f"""
+                <div style="background: {signal_color}; color: white; padding: 10px; border-radius: 8px; margin: 5px 0; text-align: center;">
+                    <div style="font-size: 1.2em;">{signal_icon}</div>
+                    <div style="font-size: 12px; margin-top: 5px;">{signal}</div>
+                </div>
+                """, unsafe_allow_html=True)
+        
+        # Show remaining signals if more than 4
+        if len(signals) > 4:
+            with st.expander(f"Xem thêm {len(signals) - 4} tín hiệu khác"):
+                for signal in signals[4:]:
+                    st.write(f"• {signal}")
+    
     # Show data source and AI model
-    if 'StockInfo_Real' in data_source:
-        st.success("✅ Dự đoán sử dụng dữ liệu thật từ CrewAI + CafeF + Vnstock")
-    elif 'VCI_Real' in data_source:
-        st.info("ℹ️ Dự đoán sử dụng dữ liệu thật từ CrewAI + CafeF + Vnstock")
+    if 'CrewAI' in data_source or 'VNStock_Real' in data_source:
+        st.success("✅ Dự đoán sử dụng dữ liệu thật từ CrewAI + VNStock")
+    elif 'VCI' in data_source:
+        st.info("ℹ️ Dự đoán sử dụng dữ liệu từ VCI")
+    elif 'Yahoo' in data_source:
+        st.info("ℹ️ Dự đoán sử dụng dữ liệu từ Yahoo Finance")
     
     # AI-Enhanced Advice Section - ALWAYS show with improved display
     st.markdown("### 🤖 Lời khuyên từ AI")
@@ -277,27 +442,19 @@ def display_price_prediction(pred):
             # Show enhanced fallback analysis using real data from sidebar
             st.markdown("**📊 Phân tích kỹ thuật nâng cao:**")
             
-            # Get risk profile from sidebar data (use current values)
-            # risk_tolerance, time_horizon, investment_amount are already available from main scope
-            
-            risk_profile = "Thận trọng" if risk_tolerance <= 30 else "Cân bằng" if risk_tolerance <= 70 else "Mạo hiểm"
-            time_horizon_clean = time_horizon.split(" (")[0] if "(" in time_horizon else time_horizon
+            # Get symbol from pred or use default
+            symbol = pred.get('symbol', 'N/A')
             
             st.markdown(f"""
             **📈 Dữ liệu kỹ thuật:**
+            - Mã cổ phiếu: {symbol}
             - Giá hiện tại: {current_price:,.2f} VND
             - Dự đoán: {predicted_price:,.2f} VND ({change_percent:+.1f}%)
             - Xu hướng: {trend.upper()}
             - RSI: {rsi:.1f} ({"Quá mua" if rsi > 70 else "Quá bán" if rsi < 30 else "Trung tính"})
             - Độ tin cậy: {confidence:.1f}%
             
-            **🎯 Phân tích theo hồ sơ rủi ro:**
-            - Hồ sơ nhà đầu tư: {risk_profile} ({risk_tolerance}%)
-            - Thời gian đầu tư: {time_horizon_clean}
-            - Số tiền đầu tư: {investment_amount:,} VND
-            
-            **💡 Khuyến nghị thông minh:**
-            Với hồ sơ {risk_profile.lower()} và khung thời gian {time_horizon_clean.lower()}, 
+            **💡 Khuyến nghị kỹ thuật:**
             {symbol} đang cho thấy xu hướng {trend}. RSI {rsi:.1f} cho thấy cổ phiếu 
             {"có thể điều chỉnh" if rsi > 70 else "có cơ hội phục hồi" if rsi < 30 else "ở trạng thái cân bằng"}.
             
@@ -306,7 +463,11 @@ def display_price_prediction(pred):
             và tin tức thị trường để đưa ra quyết định cuối cùng.
             """)
     
-    # AI error handling is now integrated into the status display above
+    # Show AI enhancement status
+    if pred.get('ai_enhanced'):
+        st.success("🤖 Dự đoán được tăng cường bởi AI")
+    elif pred.get('ai_error'):
+        st.warning(f"⚠️ AI: {pred['ai_error']}")
     
     # Show risk-adjusted analysis using REAL sidebar data
     with st.expander("🎯 Phân tích theo hồ sơ rủi ro", expanded=True):
@@ -362,19 +523,29 @@ def display_price_prediction(pred):
             st.write("• Cân bằng giữa tăng trưởng và kiểm soát rủi ro")
     
     # Show comprehensive prediction data if available
-    if 'predictions' in pred and pred['predictions']:
+    if predictions and any(predictions.values()):
         with st.expander("📈 Dự đoán đa khung thời gian"):
-            predictions = pred['predictions']
             for timeframe, data in predictions.items():
-                st.subheader(f"{timeframe.replace('_', ' ').title()}")
-                cols = st.columns(len(data))
-                for i, (period, values) in enumerate(data.items()):
-                    with cols[i]:
-                        st.metric(
-                            f"{period.replace('_', ' ')}",
-                            f"{values.get('price', 0):,.2f}",
-                            f"{values.get('change_percent', 0):+.1f}%"
-                        )
+                if data:  # Only show if data exists
+                    st.subheader(f"{timeframe.replace('_', ' ').title()}")
+                    cols = st.columns(min(len(data), 4))  # Max 4 columns
+                    for i, (period, values) in enumerate(data.items()):
+                        if i < 4:  # Only show first 4 items
+                            with cols[i]:
+                                st.metric(
+                                    f"{period.replace('_', ' ')}",
+                                    f"{values.get('price', 0):,.2f}",
+                                    f"{values.get('change_percent', 0):+.1f}%"
+                                )
+    
+    # Show method information
+    if pred.get('prediction_methods'):
+        with st.expander("🔧 Phương pháp dự đoán"):
+            methods = pred['prediction_methods']
+            for method in methods:
+                st.write(f"• {method}")
+            if pred.get('primary_method'):
+                st.write(f"**Phương pháp chính:** {pred['primary_method']}")
 
 def display_risk_assessment(risk):
     if risk.get('error'):

@@ -320,312 +320,219 @@ class PricePredictor:
             return {"error": f"Indicator calculation error: {str(e)}"}
     
     def _analyze_market_trend(self, data, predictions=None):
-        """Phân tích xu hướng thị trường dựa trên dự đoán giá thực tế"""
+        """Phân tích xu hướng thị trường với logic tối ưu"""
         try:
             current_price = data['close'].iloc[-1]
             
-            # Calculate technical indicators
-            sma_5 = data['close'].rolling(5).mean().iloc[-1]
-            sma_20 = data['close'].rolling(20).mean().iloc[-1]
-            sma_50 = data['close'].rolling(50).mean().iloc[-1]
-            ema_12 = data['close'].ewm(span=12).mean().iloc[-1]
-            ema_26 = data['close'].ewm(span=26).mean().iloc[-1]
+            # 1. Tính toán chỉ báo kỹ thuật
+            indicators = self._calculate_technical_indicators(data)
             
-            # RSI calculation
-            delta = data['close'].diff()
-            gain = (delta.where(delta > 0, 0)).rolling(window=14).mean()
-            loss = (-delta.where(delta < 0, 0)).rolling(window=14).mean()
-            rs = gain / loss
-            rsi = (100 - (100 / (1 + rs))).iloc[-1]
+            # 2. Tính điểm kỹ thuật (0-100)
+            tech_score, tech_signals = self._calculate_technical_score(current_price, indicators)
             
-            # MACD
-            macd = ema_12 - ema_26
-            macd_signal = pd.Series([macd]).ewm(span=9).mean().iloc[0]
-            
-            # Volume analysis
-            volume_trend = 0
-            if 'volume' in data.columns and len(data) > 20:
-                recent_vol = data['volume'].iloc[-5:].mean()
-                avg_vol = data['volume'].iloc[-20:].mean()
-                volume_trend = recent_vol / avg_vol if avg_vol > 0 else 1
-            
-            # Price momentum
-            momentum_5 = (current_price - data['close'].iloc[-6]) / data['close'].iloc[-6] * 100
-            momentum_20 = (current_price - data['close'].iloc[-21]) / data['close'].iloc[-21] * 100
-            
-            # Technical scoring (0-100)
-            tech_score = 50  # Base neutral
-            signals = []
-            
-            # Price vs MA (30 points)
-            if current_price > sma_50:
-                tech_score += 15
-                signals.append("Above SMA50")
-            if current_price > sma_20:
-                tech_score += 10
-                signals.append("Above SMA20")
-            if current_price > sma_5:
-                tech_score += 5
-                signals.append("Above SMA5")
-            
-            # MA alignment (20 points)
-            if sma_5 > sma_20 > sma_50:
-                tech_score += 20
-                signals.append("Bullish MA alignment")
-            elif sma_5 < sma_20 < sma_50:
-                tech_score -= 20
-                signals.append("Bearish MA alignment")
-            
-            # MACD (15 points)
-            if macd > macd_signal:
-                tech_score += 15
-                signals.append("MACD bullish")
-            else:
-                tech_score -= 15
-                signals.append("MACD bearish")
-            
-            # RSI (15 points)
-            if 30 < rsi < 70:
-                tech_score += 10
-                signals.append("RSI healthy")
-            elif rsi < 30:
-                tech_score += 15
-                signals.append("RSI oversold")
-            elif rsi > 70:
-                tech_score -= 10
-                signals.append("RSI overbought")
-            
-            # Momentum (20 points)
-            if momentum_5 > 2:
-                tech_score += 10
-                signals.append("Strong 5d momentum")
-            if momentum_20 > 5:
-                tech_score += 10
-                signals.append("Strong 20d momentum")
-            
-            # Volume confirmation (10 points)
-            if volume_trend > 1.2:
-                tech_score += 10
-                signals.append("Volume supporting")
-            
-            # PRIORITY: Use actual price predictions to determine trend
-            final_direction = "neutral"
-            final_strength = "Neutral"
-            
+            # 3. Phân tích dự đoán giá (ưu tiên cao nhất)
             if predictions:
-                try:
-                    # Get predictions and calculate changes from current price
-                    pred_1d = predictions.get('short_term', {}).get('1_days', {})
-                    pred_7d = predictions.get('short_term', {}).get('7_days', {})
-                    pred_30d = predictions.get('medium_term', {}).get('30_days', {})
-                    
-                    # Calculate changes from ACTUAL prices vs current price
-                    change_1d = 0
-                    change_7d = 0
-                    change_30d = 0
-                    
-                    if pred_1d.get('price'):
-                        change_1d = ((float(pred_1d['price']) - float(current_price)) / float(current_price)) * 100
-                    elif pred_1d.get('change_percent'):
-                        change_1d = float(pred_1d['change_percent'])
-                    
-                    if pred_7d.get('price'):
-                        change_7d = ((float(pred_7d['price']) - float(current_price)) / float(current_price)) * 100
-                    elif pred_7d.get('change_percent'):
-                        change_7d = float(pred_7d['change_percent'])
-                    
-                    if pred_30d.get('price'):
-                        change_30d = ((float(pred_30d['price']) - float(current_price)) / float(current_price)) * 100
-                    elif pred_30d.get('change_percent'):
-                        change_30d = float(pred_30d['change_percent'])
-                    
-                    # Weighted average: 1d (30%), 7d (40%), 30d (30%)
-                    avg_change = (change_1d * 0.3 + change_7d * 0.4 + change_30d * 0.3)
-                    
-                    # Primary logic: Use average change with thresholds
-                    if avg_change > 3:  # Strong positive
-                        final_direction = "bullish"
-                        if avg_change > 8:
-                            final_strength = "Strong Bullish"
-                        elif avg_change > 5:
-                            final_strength = "Moderate Bullish"
-                        else:
-                            final_strength = "Weak Bullish"
-                        signals.append(f"Positive trend: 1d={change_1d:.1f}%, 7d={change_7d:.1f}%, 30d={change_30d:.1f}%, avg={avg_change:.1f}%")
-                        
-                    elif avg_change < -3:  # Strong negative
-                        final_direction = "bearish"
-                        if avg_change < -8:
-                            final_strength = "Strong Bearish"
-                        elif avg_change < -5:
-                            final_strength = "Moderate Bearish"
-                        else:
-                            final_strength = "Weak Bearish"
-                        signals.append(f"Negative trend: 1d={change_1d:.1f}%, 7d={change_7d:.1f}%, 30d={change_30d:.1f}%, avg={avg_change:.1f}%")
-                        
-                    elif abs(avg_change) <= 1.5:  # Very small changes
-                        final_direction = "neutral"
-                        final_strength = "Neutral"
-                        signals.append(f"Sideways trend: 1d={change_1d:.1f}%, 7d={change_7d:.1f}%, 30d={change_30d:.1f}%, avg={avg_change:.1f}%")
-                        
-                    else:  # Weak signals - check consistency
-                        # Check majority direction for weak signals
-                        positive_count = sum(1 for x in [change_1d, change_7d, change_30d] if x > 0)
-                        if positive_count >= 2:  # Majority positive
-                            final_direction = "bullish"
-                            final_strength = "Weak Bullish"
-                            signals.append(f"Weak bullish: 1d={change_1d:.1f}%, 7d={change_7d:.1f}%, 30d={change_30d:.1f}%")
-                        elif positive_count <= 1:  # Majority negative
-                            final_direction = "bearish"
-                            final_strength = "Weak Bearish"
-                            signals.append(f"Weak bearish: 1d={change_1d:.1f}%, 7d={change_7d:.1f}%, 30d={change_30d:.1f}%")
-                        else:  # Exactly mixed
-                            final_direction = "neutral"
-                            final_strength = "Neutral"
-                            signals.append(f"Mixed signals: 1d={change_1d:.1f}%, 7d={change_7d:.1f}%, 30d={change_30d:.1f}%")
-                    
-
-                        
-                except Exception as e:
-                    print(f"⚠️ Prediction-based trend analysis failed: {e}")
-                    # Fallback to technical analysis
-                    if tech_score >= 65:
-                        final_direction = "bullish"
-                        final_strength = "Moderate Bullish"
-                    elif tech_score <= 35:
-                        final_direction = "bearish"
-                        final_strength = "Moderate Bearish"
-                    else:
-                        final_direction = "neutral"
-                        final_strength = "Neutral"
-                    signals.append(f"Exception fallback to technical analysis (score: {tech_score})")
-                    # Reset changes for fallback display
-                    change_1d = change_7d = change_30d = 0
+                direction, strength, pred_signals = self._analyze_price_predictions(current_price, predictions)
             else:
-                # No predictions available - use technical analysis only
-                if tech_score >= 75:
-                    final_direction = "bullish"
-                    final_strength = "Strong Bullish"
-                elif tech_score >= 60:
-                    final_direction = "bullish"
-                    final_strength = "Moderate Bullish"
-                elif tech_score >= 40:
-                    final_direction = "neutral"
-                    final_strength = "Neutral"
-                elif tech_score >= 25:
-                    final_direction = "bearish"
-                    final_strength = "Moderate Bearish"
-                else:
-                    final_direction = "bearish"
-                    final_strength = "Strong Bearish"
-                signals.append(f"Technical analysis fallback (score: {tech_score})")
+                direction, strength, pred_signals = self._analyze_technical_only(tech_score)
             
-            # AI can provide additional insight but NOT override clear price trends
-            ai_insight = ""
-            if self.ai_agent:
-                try:
-                    ai_analysis = self._get_gemini_trend_analysis(
-                        current_price, tech_score, rsi, macd, momentum_5, momentum_20, volume_trend
-                    )
-                    
-                    if ai_analysis.get('ai_direction'):
-                        ai_direction = ai_analysis['ai_direction']
-                        # AI can enhance weak signals but not override strong price trends
-                        if final_strength in ["Neutral", "Weak Bullish", "Weak Bearish"]:
-                            # Allow AI to enhance weak signals
-                            final_direction = ai_direction
-                            final_strength = ai_analysis.get('ai_strength', final_strength)
-                            signals.append(f"AI enhanced: {ai_direction}")
-                        else:
-                            # Strong price trends take priority
-                            ai_insight = f" (AI suggests {ai_direction})"
-                            signals.append(f"AI insight: {ai_direction} (price trend priority)")
-                        
-                except Exception as e:
-                    print(f"⚠️ Gemini trend analysis failed: {e}")
-            
-
-            
-            result = {
-                "direction": final_direction,
-                "strength": final_strength,
+            # 4. Kết quả cuối cùng
+            return {
+                "direction": direction,
+                "strength": strength,
                 "score": f"{tech_score}/100",
-                "signals": signals,
-                "rsi": round(rsi, 1),
-                "macd": round(macd, 4),
-                "momentum_5d": round(momentum_5, 2),
-                "momentum_20d": round(momentum_20, 2),
-                "volume_trend": round(volume_trend, 2),
+                "signals": tech_signals + pred_signals,
+                "rsi": round(indicators['rsi'], 1),
+                "macd": round(indicators['macd'], 4),
+                "momentum_5d": round(indicators['momentum_5'], 2),
+                "momentum_20d": round(indicators['momentum_20'], 2),
+                "volume_trend": round(indicators['volume_trend'], 2),
                 "support_level": round(data['close'].rolling(20).min().iloc[-1], 2),
                 "resistance_level": round(data['close'].rolling(20).max().iloc[-1], 2),
-                "prediction_based": True if predictions else False
+                "prediction_based": bool(predictions)
             }
-            
-            return result
             
         except Exception as e:
             return {"error": f"Trend analysis error: {str(e)}"}
     
-    def _get_gemini_trend_analysis(self, price, tech_score, rsi, macd, momentum_5, momentum_20, volume_trend):
-        """Get Gemini AI trend analysis"""
+    def _calculate_technical_indicators(self, data):
+        """Tính toán các chỉ báo kỹ thuật"""
+        current_price = data['close'].iloc[-1]
+        
+        # Moving averages
+        sma_5 = data['close'].rolling(5).mean().iloc[-1]
+        sma_20 = data['close'].rolling(20).mean().iloc[-1]
+        sma_50 = data['close'].rolling(50).mean().iloc[-1]
+        ema_12 = data['close'].ewm(span=12).mean().iloc[-1]
+        ema_26 = data['close'].ewm(span=26).mean().iloc[-1]
+        
+        # RSI
+        delta = data['close'].diff()
+        gain = (delta.where(delta > 0, 0)).rolling(window=14).mean()
+        loss = (-delta.where(delta < 0, 0)).rolling(window=14).mean()
+        rs = gain / loss
+        rsi = (100 - (100 / (1 + rs))).iloc[-1]
+        
+        # MACD
+        macd = ema_12 - ema_26
+        macd_signal = pd.Series([macd]).ewm(span=9).mean().iloc[0]
+        
+        # Volume
+        volume_trend = 1
+        if 'volume' in data.columns and len(data) > 20:
+            recent_vol = data['volume'].iloc[-5:].mean()
+            avg_vol = data['volume'].iloc[-20:].mean()
+            volume_trend = recent_vol / avg_vol if avg_vol > 0 else 1
+        
+        # Momentum
+        momentum_5 = (current_price - data['close'].iloc[-6]) / data['close'].iloc[-6] * 100 if len(data) > 5 else 0
+        momentum_20 = (current_price - data['close'].iloc[-21]) / data['close'].iloc[-21] * 100 if len(data) > 20 else 0
+        
+        return {
+            'sma_5': sma_5, 'sma_20': sma_20, 'sma_50': sma_50,
+            'rsi': rsi, 'macd': macd, 'macd_signal': macd_signal,
+            'volume_trend': volume_trend, 'momentum_5': momentum_5, 'momentum_20': momentum_20
+        }
+    
+    def _calculate_technical_score(self, current_price, indicators):
+        """Tính điểm kỹ thuật và tín hiệu"""
+        score = 50  # Base neutral
+        signals = []
+        
+        # Price vs MA (30 points)
+        if current_price > indicators['sma_50']:
+            score += 15
+            signals.append("Above SMA50")
+        if current_price > indicators['sma_20']:
+            score += 10
+            signals.append("Above SMA20")
+        if current_price > indicators['sma_5']:
+            score += 5
+            signals.append("Above SMA5")
+        
+        # MA alignment (20 points)
+        if indicators['sma_5'] > indicators['sma_20'] > indicators['sma_50']:
+            score += 20
+            signals.append("Bullish MA alignment")
+        elif indicators['sma_5'] < indicators['sma_20'] < indicators['sma_50']:
+            score -= 20
+            signals.append("Bearish MA alignment")
+        
+        # MACD (15 points)
+        if indicators['macd'] > indicators['macd_signal']:
+            score += 15
+            signals.append("MACD bullish")
+        else:
+            score -= 15
+            signals.append("MACD bearish")
+        
+        # RSI (15 points)
+        rsi = indicators['rsi']
+        if 30 < rsi < 70:
+            score += 10
+            signals.append("RSI healthy")
+        elif rsi < 30:
+            score += 15
+            signals.append("RSI oversold")
+        elif rsi > 70:
+            score -= 10
+            signals.append("RSI overbought")
+        
+        # Momentum (20 points)
+        if indicators['momentum_5'] > 2:
+            score += 10
+            signals.append("Strong 5d momentum")
+        if indicators['momentum_20'] > 5:
+            score += 10
+            signals.append("Strong 20d momentum")
+        
+        # Volume (10 points)
+        if indicators['volume_trend'] > 1.2:
+            score += 10
+            signals.append("Volume supporting")
+        
+        return max(0, min(100, score)), signals
+    
+    def _analyze_price_predictions(self, current_price, predictions):
+        """Phân tích dự đoán giá - logic chính với validation"""
         try:
-            context = f"""
-Phân tích xu hướng kỹ thuật cho quyết định đầu tư:
-- Điểm kỹ thuật: {tech_score}/100
-- RSI: {rsi:.1f} ({'Quá mua' if rsi > 70 else 'Quá bán' if rsi < 30 else 'Bình thường'})
-- MACD: {macd:.4f} ({'Tích cực' if macd > 0 else 'Tiêu cực'})
-- Momentum 5 ngày: {momentum_5:.1f}%
-- Momentum 20 ngày: {momentum_20:.1f}%
-- Volume trend: {volume_trend:.2f}x
+            # Lấy dự đoán
+            pred_1d = predictions.get('short_term', {}).get('1_days', {})
+            pred_7d = predictions.get('short_term', {}).get('7_days', {})
+            pred_30d = predictions.get('medium_term', {}).get('30_days', {})
+            
+            # Tính % thay đổi với validation
+            changes = []
+            for pred, name in [(pred_1d, '1d'), (pred_7d, '7d'), (pred_30d, '30d')]:
+                if pred.get('price'):
+                    predicted_price = float(pred['price'])
+                    # CRITICAL: Validate predicted price is reasonable
+                    if predicted_price <= 0 or predicted_price > current_price * 3:
+                        print(f"⚠️ Invalid prediction for {name}: {predicted_price} (current: {current_price})")
+                        change = 0  # Use 0 for invalid predictions
+                    else:
+                        change = ((predicted_price - float(current_price)) / float(current_price)) * 100
+                elif pred.get('change_percent'):
+                    change = float(pred['change_percent'])
+                    # Validate change_percent is reasonable
+                    if abs(change) > 50:  # More than 50% change is suspicious
+                        print(f"⚠️ Extreme change_percent for {name}: {change}%")
+                        change = max(-30, min(30, change))  # Cap at ±30%
+                else:
+                    change = 0
+                changes.append((change, name))
+            
+            change_1d, change_7d, change_30d = [c[0] for c in changes]
+            
+            # Trọng số: 7d quan trọng nhất (50%), 30d (30%), 1d (20%)
+            weighted_avg = change_1d * 0.2 + change_7d * 0.5 + change_30d * 0.3
+            
+            # FIXED Logic quyết định dựa trên weighted average
+            if weighted_avg > 3:  # Tăng mạnh (lowered threshold)
+                direction = "bullish"
+                strength = "Strong Bullish" if weighted_avg > 8 else "Moderate Bullish"
+            elif weighted_avg < -3:  # Giảm mạnh (lowered threshold)
+                direction = "bearish"
+                strength = "Strong Bearish" if weighted_avg < -8 else "Moderate Bearish"
+            elif abs(weighted_avg) <= 1.5:  # Sideway (tightened range)
+                direction = "neutral"
+                strength = "Neutral"
+            else:  # Tín hiệu yếu - kiểm tra consensus
+                positive_count = sum(1 for c, _ in changes if c > 0.5)  # Lowered threshold
+                negative_count = sum(1 for c, _ in changes if c < -0.5)
+                
+                if positive_count >= 2 and negative_count == 0:
+                    direction = "bullish"
+                    strength = "Weak Bullish"
+                elif negative_count >= 2 and positive_count == 0:
+                    direction = "bearish"
+                    strength = "Weak Bearish"
+                else:
+                    direction = "neutral"
+                    strength = "Neutral"
+            
 
-Hãy đưa ra quyết định xu hướng rõ ràng:
-- Điểm ≥65: Xu hướng TĂNG mạnh
-- Điểm ≤35: Xu hướng GIẢM mạnh  
-- Điểm 36-64: Phân tích kỹ các chỉ báo
-
-TREND: [BULLISH/BEARISH/NEUTRAL - phải chọn 1 trong 3]
-STRENGTH: [Strong/Moderate/Weak]
-REASON: [lý do cụ thể dựa trên chỉ báo]
-"""
             
-            ai_result = self.ai_agent.generate_with_fallback(context, 'trend_analysis', max_tokens=200)
-            
-            if ai_result['success']:
-                response = ai_result['response']
-                
-                # Parse AI response
-                ai_direction = None
-                ai_strength = None
-                
-                if 'TREND: BULLISH' in response.upper() or 'XU HƯỚNG TĂNG' in response.upper():
-                    ai_direction = 'bullish'
-                elif 'TREND: BEARISH' in response.upper() or 'XU HƯỚNG GIẢM' in response.upper():
-                    ai_direction = 'bearish'
-                elif 'TREND: NEUTRAL' in response.upper() or 'TRUNG TÍNH' in response.upper():
-                    ai_direction = 'neutral'
-                # Additional patterns for stronger detection
-                elif 'TĂNG MẠNH' in response.upper() or 'BULLISH' in response.upper():
-                    ai_direction = 'bullish'
-                elif 'GIẢM MẠNH' in response.upper() or 'BEARISH' in response.upper():
-                    ai_direction = 'bearish'
-                
-                if 'STRENGTH: STRONG' in response.upper():
-                    ai_strength = f"Strong {ai_direction.title()}" if ai_direction else "Strong"
-                elif 'STRENGTH: MODERATE' in response.upper():
-                    ai_strength = f"Moderate {ai_direction.title()}" if ai_direction else "Moderate"
-                elif 'STRENGTH: WEAK' in response.upper():
-                    ai_strength = f"Weak {ai_direction.title()}" if ai_direction else "Weak"
-                
-                return {
-                    'ai_direction': ai_direction,
-                    'ai_strength': ai_strength,
-                    'ai_analysis': response
-                }
-            
-            return {}
+            signals = [f"Price trend: 1d={change_1d:.1f}%, 7d={change_7d:.1f}%, 30d={change_30d:.1f}%, avg={weighted_avg:.1f}%"]
+            return direction, strength, signals
             
         except Exception as e:
-            return {}
+            print(f"⚠️ Prediction analysis error: {e}")
+            return "neutral", "Neutral", [f"Prediction error: {str(e)}"]
+    
+    def _analyze_technical_only(self, tech_score):
+        """Phân tích chỉ dựa trên kỹ thuật"""
+        if tech_score >= 75:
+            return "bullish", "Strong Bullish", [f"Strong technical (score: {tech_score})"]
+        elif tech_score >= 60:
+            return "bullish", "Moderate Bullish", [f"Moderate technical (score: {tech_score})"]
+        elif tech_score >= 40:
+            return "neutral", "Neutral", [f"Neutral technical (score: {tech_score})"]
+        elif tech_score >= 25:
+            return "bearish", "Moderate Bearish", [f"Moderate technical (score: {tech_score})"]
+        else:
+            return "bearish", "Strong Bearish", [f"Weak technical (score: {tech_score})"]
+
     
     def _apply_ml_predictions(self, data, indicators):
         """Apply machine learning-based predictions using simple models"""
