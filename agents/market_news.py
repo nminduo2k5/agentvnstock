@@ -2,6 +2,8 @@ import requests
 from bs4 import BeautifulSoup
 from datetime import datetime
 import re
+import asyncio
+from agents.risk_based_news import RiskBasedNewsAgent
 
 class MarketNews:
     def __init__(self):
@@ -11,28 +13,49 @@ class MarketNews:
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
         }
         self.ai_agent = None  # Will be set by main_agent
+        self.risk_news_agent = RiskBasedNewsAgent()
     
     def set_ai_agent(self, ai_agent):
         """Set AI agent for enhanced market news analysis"""
         self.ai_agent = ai_agent
     
-    def get_market_news(self, category: str = "general"):
+    def get_market_news(self, category: str = "general", risk_tolerance: int = 50, time_horizon: str = "Trung hạn", investment_amount: int = 10000000):
         try:
-            # Get base market news first
-            base_news = None
-            
-            # Try CafeF first
-            cafef_news = self._crawl_cafef_news()
-            if cafef_news:
-                base_news = {
-                    "category": "Vietnam Market",
-                    "news_count": len(cafef_news),
-                    "news": cafef_news,
-                    "source": "CafeF.vn"
-                }
-            else:
-                # Fallback to mock VN news
-                base_news = self._get_vn_mock_news()
+            # Get risk-based news first
+            try:
+                loop = asyncio.new_event_loop()
+                asyncio.set_event_loop(loop)
+                risk_news = loop.run_until_complete(
+                    self.risk_news_agent.get_news_by_risk_profile(risk_tolerance, time_horizon, investment_amount)
+                )
+                loop.close()
+                
+                if not risk_news.get('error'):
+                    base_news = {
+                        "category": "Vietnam Market",
+                        "news_count": risk_news['total_news'],
+                        "news": risk_news['news_data'],
+                        "source": risk_news['source_info'],
+                        "risk_profile": risk_news['risk_profile'],
+                        "news_type": risk_news['news_type'],
+                        "recommendation": risk_news['recommendation']
+                    }
+                else:
+                    raise Exception("Risk news failed")
+            except:
+                # Fallback to traditional news
+                cafef_news = self._crawl_cafef_news()
+                if cafef_news:
+                    base_news = {
+                        "category": "Vietnam Market",
+                        "news_count": len(cafef_news),
+                        "news": cafef_news,
+                        "source": "📰 CafeF.vn (Tin chính thống)",
+                        "risk_profile": "Default",
+                        "news_type": "official"
+                    }
+                else:
+                    base_news = self._get_vn_mock_news()
             
             # Enhance with AI analysis if available
             if base_news and self.ai_agent:
@@ -157,7 +180,9 @@ class MarketNews:
             "category": "Vietnam Market",
             "news_count": len(news_items),
             "news": news_items,
-            "source": "Mock VN News"
+            "source": "📰 Mock VN News (Fallback)",
+            "risk_profile": "Default",
+            "news_type": "official"
         }
     
     def _get_ai_market_analysis(self, base_news: dict, category: str):
