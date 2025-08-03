@@ -25,7 +25,7 @@ class MainAgent:
         self.risk_expert = RiskExpert(vn_api)
         self.international_news = InternationalMarketNews()
         
-        # Initialize Unified AI Agent with multiple models
+        # Initialize Unified AI Agent with user-provided API key
         self.gemini_agent = None
         if gemini_api_key:
             try:
@@ -34,9 +34,11 @@ class MainAgent:
                 )
                 connection_results = self.gemini_agent.test_connection()
                 active_models = [model for model, status in connection_results.items() if status]
-                print(f"✅ AI Models initialized: {', '.join(active_models)}")
+                model_info = self.gemini_agent.get_model_info()
+                print(f"✅ AI Models initialized: {', '.join(active_models)} ({model_info.get('current_model', 'Unknown')})")
             except Exception as e:
                 print(f"⚠️ AI initialization failed: {e}")
+                self.gemini_agent = None
         
         # Update VN API with CrewAI keys
         if gemini_api_key or serper_api_key:
@@ -69,20 +71,23 @@ class MainAgent:
     def set_gemini_api_key(self, api_key: str):
         """Set or update Gemini API key"""
         try:
-            if self.gemini_agent:
-                # Update existing agent
-                self.gemini_agent = UnifiedAIAgent(
-                    gemini_api_key=api_key
-                )
-            else:
-                # Create new agent
-                self.gemini_agent = UnifiedAIAgent(gemini_api_key=api_key)
+            # Create new agent
+            self.gemini_agent = UnifiedAIAgent(gemini_api_key=api_key)
             
             connection_results = self.gemini_agent.test_connection()
-            self._integrate_ai_with_agents()
-            return True
+            model_info = self.gemini_agent.get_model_info()
+            
+            if model_info['is_active']:
+                print(f"✅ Gemini API key updated successfully ({model_info['current_model']})")
+                self._integrate_ai_with_agents()
+                return True
+            else:
+                print("❌ Gemini API key invalid or model not available")
+                self.gemini_agent = None
+                return False
         except Exception as e:
             print(f"❌ Failed to set Gemini API key: {e}")
+            self.gemini_agent = None
             return False
     
 
@@ -107,7 +112,8 @@ class MainAgent:
                 
                 connection_results = self.gemini_agent.test_connection()
                 active_models = [model for model, status in connection_results.items() if status]
-                print(f"✅ AI Models updated: {', '.join(active_models)}")
+                model_info = self.gemini_agent.get_model_info()
+                print(f"✅ AI Models updated: {', '.join(active_models)} ({model_info.get('current_model', 'Unknown')})")
                 self._integrate_ai_with_agents()
             
             # Update VN API CrewAI integration

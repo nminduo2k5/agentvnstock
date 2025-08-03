@@ -1,14 +1,12 @@
 import google.generativeai as genai
 import os
 import logging
-from dotenv import load_dotenv
 from typing import Dict, Any, Optional, List
 import asyncio
 import json
 import time
 from datetime import datetime
 
-load_dotenv()
 logger = logging.getLogger(__name__)
 
 class UnifiedAIAgent:
@@ -17,40 +15,73 @@ class UnifiedAIAgent:
         Initialize AI Agent with Gemini AI
         """
         self.available_models = {}
+        self.current_model_name = None
         self.model_capabilities = {
             'gemini': {
                 'strengths': ['analysis', 'vietnamese', 'reasoning', 'financial_advice', 'prediction', 'technical_analysis', 'news_analysis', 'risk_assessment'],
                 'speed': 'fast',
-                'cost': 'low'
+                'cost': 'free'
             }
         }
         
-        # Initialize Gemini
-        if not gemini_api_key:
-            gemini_api_key = os.getenv('GOOGLE_API_KEY')
+        # Initialize Gemini with user-provided API key only
+        # No hardcoded or environment variables used
         
         if gemini_api_key:
             try:
                 genai.configure(api_key=gemini_api_key)
-                model_name = os.getenv('GEMINI_MODEL', 'gemini-1.5-flash')
-                self.available_models['gemini'] = genai.GenerativeModel(model_name)
-                self.gemini_api_key = gemini_api_key
-                logger.info("✅ Gemini AI initialized successfully")
+                
+                # Try different model names (Google đã update)
+                model_names = [
+                    'gemini-1.5-flash',     # Model mới nhất
+                    'gemini-1.5-pro',       # Pro version
+                    'gemini-1.0-pro',       # Fallback
+                    'models/gemini-1.5-flash',  # With prefix
+                    'models/gemini-1.0-pro'     # With prefix fallback
+                ]
+                
+                model_initialized = False
+                for model_name in model_names:
+                    try:
+                        model = genai.GenerativeModel(model_name)
+                        # Test the model with a simple request
+                        test_response = model.generate_content("Hello")
+                        if test_response and test_response.text:
+                            self.available_models['gemini'] = model
+                            self.gemini_api_key = gemini_api_key
+                            self.current_model_name = model_name
+                            logger.info(f"✅ Gemini AI initialized with model: {model_name}")
+                            model_initialized = True
+                            break
+                    except Exception as e:
+                        logger.warning(f"⚠️ Model {model_name} not available: {e}")
+                        continue
+                
+                if not model_initialized:
+                    # If no model works, raise error
+                    raise Exception("No available Gemini models found")
+                    
             except Exception as e:
                 logger.error(f"❌ Failed to initialize Gemini: {str(e)}")
+                # Don't set available_models if initialization failed
+                self.available_models = {}
         
         if not self.available_models:
-            raise ValueError("Gemini AI must be configured. Please provide GOOGLE_API_KEY.")
+            raise ValueError("Gemini AI must be configured.")
     
     def test_connection(self):
-        """Test Gemini API connection"""
+        """Test AI API connections"""
         results = {}
         
         if 'gemini' in self.available_models:
             try:
-                response = self.available_models['gemini'].generate_content("Hello")
-                results['gemini'] = True
-                logger.info("✅ Gemini connection test passed")
+                response = self.available_models['gemini'].generate_content("Test")
+                if response and response.text:
+                    results['gemini'] = True
+                    logger.info("✅ Gemini connection test passed")
+                else:
+                    results['gemini'] = False
+                    logger.error("❌ Gemini returned empty response")
             except Exception as e:
                 results['gemini'] = False
                 logger.error(f"❌ Gemini connection test failed: {str(e)}")
@@ -64,7 +95,6 @@ class UnifiedAIAgent:
         """
         Select the best available model for a specific task type
         """
-        # Since we only have Gemini, always return it if available
         if 'gemini' in self.available_models:
             return 'gemini'
         
@@ -72,14 +102,15 @@ class UnifiedAIAgent:
     
     def generate_with_model(self, prompt: str, model_name: str, max_tokens: int = 1000) -> str:
         """
-        Generate response using Gemini AI model
+        Generate response using specified AI model
         """
         try:
             if model_name == 'gemini' and 'gemini' in self.available_models:
                 response = self.available_models['gemini'].generate_content(prompt)
                 return response.text
+
             else:
-                raise ValueError(f"Model {model_name} not available. Only Gemini is supported.")
+                raise ValueError(f"Model {model_name} not available.")
                 
         except Exception as e:
             logger.error(f"Error generating with {model_name}: {str(e)}")
@@ -87,10 +118,8 @@ class UnifiedAIAgent:
     
     def generate_with_fallback(self, prompt: str, task_type: str, max_tokens: int = 1000) -> Dict[str, Any]:
         """
-        Generate response with automatic fallback to other models if primary fails
+        Generate response with automatic fallback to offline mode if primary fails
         """
-        primary_model = self.select_best_model(task_type)
-        
         try:
             response = self.generate_with_model(prompt, 'gemini', max_tokens)
             return {
@@ -100,12 +129,128 @@ class UnifiedAIAgent:
             }
         except Exception as e:
             logger.error(f"Gemini model failed: {str(e)}")
+            # Check if it's a quota/rate limit error
+            error_str = str(e).lower()
+            if any(keyword in error_str for keyword in ['quota', 'rate limit', 'exceeded', 'limit']):
+                # Use offline fallback for quota issues
+                return self._generate_offline_fallback(prompt, task_type)
+            else:
+                return {
+                    'response': f'Gemini AI failed: {str(e)}',
+                    'model_used': None,
+                    'success': False,
+                    'error': str(e)
+                }
+    
+    def _generate_offline_fallback(self, prompt: str, task_type: str) -> Dict[str, Any]:
+        """
+        Generate offline fallback response when API quota is exhausted
+        """
+        try:
+            # Extract key information from prompt
+            if 'CÂU HỎI:' in prompt:
+                question = prompt.split('CÂU HỎI:')[1].split('MÃ CỔ PHIẾU:')[0].strip()
+            else:
+                question = prompt[:200] + '...' if len(prompt) > 200 else prompt
+            
+            # Generate contextual offline response based on task type
+            if task_type == 'financial_advice':
+                response = self._generate_financial_advice_fallback(question)
+            elif task_type == 'general_query':
+                response = self._generate_general_fallback(question)
+            else:
+                response = self._generate_default_fallback(question)
+            
             return {
-                'response': f'Gemini AI failed: {str(e)}',
-                'model_used': None,
+                'response': response,
+                'model_used': 'offline_fallback',
+                'success': True,
+                'quota_exceeded': True
+            }
+        except Exception as e:
+            return {
+                'response': f'Offline fallback failed: {str(e)}',
+                'model_used': 'offline_fallback',
                 'success': False,
                 'error': str(e)
             }
+    
+    def _generate_financial_advice_fallback(self, question: str) -> str:
+        """
+        Generate financial advice fallback when API quota exceeded
+        """
+        return f"""
+PHÂN TÍCH CHUYÊN SÂU:
+Do Gemini API đã hết quota, hệ thống chuyển sang chế độ offline. Đây là phân tích cơ bản dựa trên nguyên tắc đầu tư:
+
+📊 **Nguyên tắc phân tích kỹ thuật:**
+- Xem xét xu hướng giá trong 20-50 phiên gần nhất
+- Kiểm tra khối lượng giao dịch và momentum
+- Xác định vùng hỗ trợ và kháng cự
+
+💰 **Nguyên tắc phân tích cơ bản:**
+- P/E < 15 thường được coi là hấp dẫn
+- P/B < 2 cho thấy định giá hợp lý
+- Tăng trưởng doanh thu ổn định qua các quý
+
+KẾT LUẬN & KHUYẾN NGHỊ:
+Không thể đưa ra khuyến nghị cụ thể do thiếu dữ liệu real-time. Khuyến nghị:
+- Nghiên cứu kỹ báo cáo tài chính gần nhất
+- Tham khảo ý kiến nhiều chuyên gia
+- Chỉ đầu tư số tiền có thể chấp nhận mất
+
+HÀNH ĐỘNG CỤ THỂ:
+- Đợi API quota reset để có phân tích chi tiết
+- Tham khảo các nguồn tin tức tài chính uy tín
+- Xem xét tình hình thị trường tổng thể
+- Đa dạng hóa danh mục đầu tư
+
+CẢNH BÁO RỦI RO:
+⚠️ **QUAN TRỌNG:** Đây là phân tích offline cơ bản do hết quota API. 
+Không nên dựa vào đây để đưa ra quyết định đầu tư quan trọng.
+Hãy đợi API reset hoặc tham khảo chuyên gia tài chính.
+"""
+    
+    def _generate_general_fallback(self, question: str) -> str:
+        """
+        Generate general query fallback when API quota exceeded
+        """
+        return f"""
+📈 **PHÂN TÍCH OFFLINE:**
+
+Do Gemini API đã hết quota, tôi không thể phân tích chi tiết câu hỏi của bạn lúc này.
+
+**Câu hỏi của bạn:** {question}
+
+💡 **Gợi ý chung về đầu tư:**
+- Luôn nghiên cứu kỹ trước khi đầu tư
+- Đa dạng hóa danh mục để giảm rủi ro
+- Chỉ đầu tư số tiền có thể chấp nhận mất
+- Theo dõi tin tức và báo cáo tài chính
+- Tham khảo ý kiến chuyên gia
+
+⚠️ **LƯU Ý:** Để nhận được phân tích chi tiết và cá nhân hóa, 
+vui lòng thử lại sau khi API quota được reset (thường là 24h).
+"""
+    
+    def _generate_default_fallback(self, question: str) -> str:
+        """
+        Generate default fallback response
+        """
+        return f"""
+🤖 **HỆ THỐNG OFFLINE:**
+
+Xin lỗi, Gemini API đã hết quota nên tôi không thể phân tích chi tiết lúc này.
+
+**Câu hỏi:** {question}
+
+**Khuyến nghị:**
+- Thử lại sau vài giờ khi quota reset
+- Tham khảo các nguồn thông tin tài chính uy tín
+- Liên hệ chuyên gia tài chính nếu cần tư vấn gấp
+
+⏰ **Quota thường reset sau 24 giờ**
+"""
     
     def generate_expert_advice(self, query: str, symbol: str = None, data: dict = None):
         """Generate expert financial advice using best available AI model with fallback"""
@@ -170,15 +315,21 @@ Lưu ý: Trả lời bằng tiếng Việt, dựa trên dữ liệu thực tế,
                 
                 return parsed_response
             else:
-                return {
-                    "expert_advice": f"❌ **LỖI AI SYSTEM:**\n{result.get('response', 'Không thể kết nối với AI models')}\n\n⚠️ **GỢI Ý:**\n- Kiểm tra API keys\n- Thử lại sau vài phút\n- Liên hệ hỗ trợ nếu vấn đề tiếp tục",
-                    "recommendations": [
-                        "Kiểm tra Gemini API key",
-                        "Thử lại sau vài phút", 
-                        "Liên hệ hỗ trợ kỹ thuật",
-                        "Sử dụng chế độ offline"
-                    ]
-                }
+                # Check if quota exceeded
+                if result.get('quota_exceeded'):
+                    parsed_response = self._parse_response(result['response'])
+                    parsed_response['expert_advice'] += "\n\n🤖 **AI Model:** Offline Fallback (Quota Exceeded)"
+                    return parsed_response
+                else:
+                    return {
+                        "expert_advice": f"❌ **LỖI AI SYSTEM:**\n{result.get('response', 'Không thể kết nối với AI models')}\n\n⚠️ **GỢI Ý:**\n- Kiểm tra API keys\n- Thử lại sau vài phút\n- Liên hệ hỗ trợ nếu vấn đề tiếp tục",
+                        "recommendations": [
+                            "Kiểm tra Gemini API key",
+                            "Thử lại sau vài phút", 
+                            "Liên hệ hỗ trợ kỹ thuật",
+                            "Sử dụng chế độ offline"
+                        ]
+                    }
                 
         except Exception as e:
             logger.error(f"Critical error in generate_expert_advice: {str(e)}")
@@ -348,15 +499,28 @@ Trả lời bằng tiếng Việt, chuyên nghiệp nhưng dễ hiểu.
             result = self.generate_with_fallback(context, 'general_query', max_tokens=2048)
             
             if result['success']:
-                return {
-                    "expert_advice": f"📈 **PHÂN TÍCH CHUYÊN GIA:**\n{result['response']}\n\n🤖 **AI Model:** {result['model_used']}\n\n⚠️ **LƯU Ý:** Đây là thông tin tham khảo, không phải lời khuyên đầu tư tuyệt đối.",
-                    "recommendations": [
-                        "Nghiên cứu thêm từ nhiều nguồn",
-                        "Tham khảo chuyên gia tài chính", 
-                        "Đánh giá khả năng tài chính cá nhân",
-                        "Chỉ đầu tư số tiền có thể chấp nhận mất"
-                    ]
-                }
+                if result.get('quota_exceeded'):
+                    # Quota exceeded, return offline response
+                    return {
+                        "expert_advice": f"📈 **PHÂN TÍCH OFFLINE:**\n{result['response']}\n\n🤖 **AI Model:** Offline Fallback (Quota Exceeded)\n\n⚠️ **LƯU Ý:** Đây là phản hồi offline do hết quota API.",
+                        "recommendations": [
+                            "Đợi quota reset (24h) để có phân tích chi tiết",
+                            "Tham khảo các nguồn tin tức tài chính", 
+                            "Liên hệ chuyên gia nếu cần tư vấn gấp",
+                            "Chỉ đầu tư số tiền có thể chấp nhận mất"
+                        ]
+                    }
+                else:
+                    # Normal AI response
+                    return {
+                        "expert_advice": f"📈 **PHÂN TÍCH CHUYÊN GIA:**\n{result['response']}\n\n🤖 **AI Model:** {result['model_used']}\n\n⚠️ **LƯU Ý:** Đây là thông tin tham khảo, không phải lời khuyên đầu tư tuyệt đối.",
+                        "recommendations": [
+                            "Nghiên cứu thêm từ nhiều nguồn",
+                            "Tham khảo chuyên gia tài chính", 
+                            "Đánh giá khả năng tài chính cá nhân",
+                            "Chỉ đầu tư số tiền có thể chấp nhận mất"
+                        ]
+                    }
             else:
                 return self._get_fallback_response(query)
                 
@@ -423,11 +587,31 @@ Trả lời bằng tiếng Việt, chuyên nghiệp nhưng dễ hiểu.
         try:
             if provider.lower() == 'gemini':
                 genai.configure(api_key=api_key)
-                model_name = os.getenv('GEMINI_MODEL', 'gemini-1.5-flash')
-                self.available_models['gemini'] = genai.GenerativeModel(model_name)
-                self.gemini_api_key = api_key
-                logger.info("✅ Gemini API key updated successfully")
-                return {'success': True, 'message': 'Gemini API key updated successfully'}
+                
+                # Try different model names (Google đã update)
+                model_names = [
+                    'gemini-1.5-flash',     # Model mới nhất
+                    'gemini-1.5-pro',       # Pro version
+                    'gemini-1.0-pro',       # Fallback
+                    'models/gemini-1.5-flash',  # With prefix
+                    'models/gemini-1.0-pro'     # With prefix fallback
+                ]
+                
+                for model_name in model_names:
+                    try:
+                        model = genai.GenerativeModel(model_name)
+                        # Test the model with a simple request
+                        test_response = model.generate_content("Test")
+                        self.available_models['gemini'] = model
+                        self.gemini_api_key = api_key
+                        logger.info(f"✅ Gemini API key updated with model: {model_name}")
+                        return {'success': True, 'message': f'Gemini API key updated with model: {model_name}'}
+                    except Exception as e:
+                        logger.warning(f"⚠️ Model {model_name} not available: {e}")
+                        continue
+                else:
+                    # If no model works, return error
+                    return {'success': False, 'message': 'No available Gemini models found'}
             else:
                 return {'success': False, 'message': f'Only Gemini provider is supported. Got: {provider}'}
                 
@@ -517,6 +701,15 @@ Trả lời bằng tiếng Việt, chuyên nghiệp nhưng dễ hiểu.
         except Exception as e:
             logger.error(f"Batch generation failed: {str(e)}")
             return [{'success': False, 'error': str(e)} for _ in prompts]
+    
+    def get_model_info(self) -> Dict[str, Any]:
+        """Get information about available models"""
+        return {
+            'available_models': list(self.available_models.keys()),
+            'current_model': self.current_model_name,
+            'model_count': len(self.available_models),
+            'is_active': len(self.available_models) > 0
+        }
 
 # Backward compatibility alias
 GeminiAgent = UnifiedAIAgent

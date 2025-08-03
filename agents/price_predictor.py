@@ -487,18 +487,18 @@ class PricePredictor:
             # Trọng số: 7d quan trọng nhất (50%), 30d (30%), 1d (20%)
             weighted_avg = change_1d * 0.2 + change_7d * 0.5 + change_30d * 0.3
             
-            # FIXED Logic quyết định dựa trên weighted average
-            if weighted_avg > 3:  # Tăng mạnh (lowered threshold)
+            # CORRECTED Logic quyết định dựa trên weighted average
+            if weighted_avg > 2:  # Tăng mạnh
                 direction = "bullish"
-                strength = "Strong Bullish" if weighted_avg > 8 else "Moderate Bullish"
-            elif weighted_avg < -3:  # Giảm mạnh (lowered threshold)
+                strength = "Strong Bullish" if weighted_avg > 5 else "Moderate Bullish"
+            elif weighted_avg < -2:  # Giảm mạnh - FIXED: This should be bearish!
                 direction = "bearish"
-                strength = "Strong Bearish" if weighted_avg < -8 else "Moderate Bearish"
-            elif abs(weighted_avg) <= 1.5:  # Sideway (tightened range)
+                strength = "Strong Bearish" if weighted_avg < -5 else "Moderate Bearish"
+            elif abs(weighted_avg) <= 1:  # Sideway
                 direction = "neutral"
                 strength = "Neutral"
             else:  # Tín hiệu yếu - kiểm tra consensus
-                positive_count = sum(1 for c, _ in changes if c > 0.5)  # Lowered threshold
+                positive_count = sum(1 for c, _ in changes if c > 0.5)
                 negative_count = sum(1 for c, _ in changes if c < -0.5)
                 
                 if positive_count >= 2 and negative_count == 0:
@@ -511,6 +511,9 @@ class PricePredictor:
                     direction = "neutral"
                     strength = "Neutral"
             
+            # CRITICAL FIX: Debug logging to catch inconsistencies
+            print(f"🔍 MSN Analysis: 1d={change_1d:.1f}%, 7d={change_7d:.1f}%, 30d={change_30d:.1f}%, weighted_avg={weighted_avg:.1f}% -> {direction} {strength}")
+            
 
             
             signals = [f"Price trend: 1d={change_1d:.1f}%, 7d={change_7d:.1f}%, 30d={change_30d:.1f}%, avg={weighted_avg:.1f}%"]
@@ -521,17 +524,21 @@ class PricePredictor:
             return "neutral", "Neutral", [f"Prediction error: {str(e)}"]
     
     def _analyze_technical_only(self, tech_score):
-        """Phân tích chỉ dựa trên kỹ thuật"""
-        if tech_score >= 75:
-            return "bullish", "Strong Bullish", [f"Strong technical (score: {tech_score})"]
-        elif tech_score >= 60:
-            return "bullish", "Moderate Bullish", [f"Moderate technical (score: {tech_score})"]
-        elif tech_score >= 40:
-            return "neutral", "Neutral", [f"Neutral technical (score: {tech_score})"]
-        elif tech_score >= 25:
-            return "bearish", "Moderate Bearish", [f"Moderate technical (score: {tech_score})"]
+        """Phân tích chỉ dựa trên kỹ thuật với logic chính xác"""
+        # FIXED: Technical score should align with actual trend direction
+        if tech_score >= 70:
+            return "bullish", "Strong Bullish", [f"Strong technical signals (score: {tech_score})"]
+        elif tech_score >= 55:
+            return "bullish", "Moderate Bullish", [f"Positive technical signals (score: {tech_score})"]
+        elif tech_score >= 45:
+            return "neutral", "Neutral", [f"Mixed technical signals (score: {tech_score})"]
+        elif tech_score >= 30:
+            return "bearish", "Moderate Bearish", [f"Negative technical signals (score: {tech_score})"]
         else:
-            return "bearish", "Strong Bearish", [f"Weak technical (score: {tech_score})"]
+            return "bearish", "Strong Bearish", [f"Weak technical signals (score: {tech_score})"]
+        
+        # Debug logging
+        print(f"🔍 Technical Analysis: score={tech_score} -> direction determined")
 
     
     def _apply_ml_predictions(self, data, indicators):
