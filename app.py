@@ -226,15 +226,13 @@ def display_price_prediction(pred, investment_amount=10000000, risk_tolerance=50
     # Enhanced prediction display with trend analysis
     prediction_method = "🧠 Dự đoán bởi DuongPro" if prediction_based else "📊 Phân tích kỹ thuật"
     
-    # Main trend header
+    # Information display header
     st.markdown(f"""
-    <div style="background: {colors.get(trend, '#ffc107')}; color: white; padding: 20px; border-radius: 12px; margin: 10px 0;">
+    <div style="background: #f8f9fa; color: #333; padding: 20px; border-radius: 12px; margin: 10px 0; border: 1px solid #dee2e6;">
         <div style="text-align: center;">
-            <div style="font-size: 2.5em; margin-bottom: 10px;">{icons.get(trend, '📊')}</div>
             <h3 style="margin: 0; font-size: 24px;">DỰ ĐOÁN GIÁ - {prediction_method}</h3>
-            <h2 style="margin: 10px 0; font-size: 28px;">{trend.upper()} - {trend_strength}</h2>
-            <p style="margin: 5px 0; font-size: 16px; opacity: 0.9;">Điểm kỹ thuật: {tech_score}</p>
-            <p style="margin: 5px 0; font-size: 14px; opacity: 0.8;">Độ tin cậy: {confidence:.1f}%</p>
+            <p style="margin: 5px 0; font-size: 16px;">Điểm kỹ thuật: {tech_score}</p>
+            <p style="margin: 5px 0; font-size: 14px;">Độ tin cậy: {confidence:.1f}%</p>
         </div>
     </div>
     """, unsafe_allow_html=True)
@@ -1262,7 +1260,7 @@ with tab2:
             margin-bottom: 1.5rem;
             text-align: center;
         ">
-            <h4 style="color: #00b894; margin: 0;">🤖 Gemini AI đang hoạt động</h4>
+            <h4 style="color: #00b894; margin: 0;">🤖 AI DuongPro đang hoạt động</h4>
             <p style="color: #2d3436; margin: 0.3rem 0 0 0; font-size: 0.9rem;">Sẵn sàng phân tích và tư vấn đầu tư cho bạn</p>
         </div>
         """, unsafe_allow_html=True)
@@ -1604,9 +1602,19 @@ with tab3:
                     </div>
                     """, unsafe_allow_html=True)
 
-    # Add market news section with CrewAI status
+    # Add market news section with risk-based filtering
     st.markdown("---")  # Separator
     st.subheader("📰 Tin tức thị trường Việt Nam")
+    
+    # Show risk profile info
+    risk_profile = "Thận trọng" if risk_tolerance <= 30 else "Cân bằng" if risk_tolerance <= 70 else "Mạo hiểm"
+    st.info(f"🎯 Hồ sơ rủi ro: {risk_profile} ({risk_tolerance}%) - Thời gian: {time_horizon}")
+    
+    # Show news type based on risk profile
+    if risk_tolerance <= 70:
+        st.markdown("**📰 Chế độ tin chính thống - Phù hợp với hồ sơ rủi ro của bạn**")
+    else:
+        st.markdown("**🔥 Chế độ tin ngầm + chính thống - Dành cho nhà đầu tư mạo hiểm**")
     
     # Show CrewAI status for news
     if main_agent.vn_api.crewai_collector and main_agent.vn_api.crewai_collector.enabled:
@@ -1614,8 +1622,8 @@ with tab3:
     else:
         st.markdown("**📋 Tin tức fallback - Cấu hình CrewAI để lấy tin thật**")
     
-    if st.button("🔄 Cập nhật", type="secondary"):
-        with st.spinner("Đang lấy tin tức VN..."):
+    if st.button("🔄 Cập nhật tin tức VN", type="secondary"):
+        with st.spinner("🔍 Đang lấy tin tức theo hồ sơ rủi ro..."):
             loop = asyncio.new_event_loop()
             asyncio.set_event_loop(loop)
             market_news = loop.run_until_complete(asyncio.to_thread(
@@ -1625,32 +1633,113 @@ with tab3:
                 time_horizon=time_horizon,
                 investment_amount=investment_amount
             ))
+            loop.close()
             
             if market_news.get('error'):
                 st.error(f"❌ {market_news['error']}")
             else:
-                source = market_news.get('source', 'Không rõ')
+                # Show source info with risk profile
+                source_info = market_news.get('source', 'Unknown')
                 news_count = market_news.get('news_count', 0)
+                news_type = market_news.get('news_type', 'official')
                 
-                if 'CrewAI' in source:
-                    st.success(f"✅ Tìm thấy {news_count} tin tức thật từ {source}")
-                elif 'CafeF' in source:
-                    st.info(f"ℹ️ Tìm thấy {news_count} tin tức từ {source}")
+                if news_type == 'underground':
+                    st.warning(f"🔥 {source_info} - {news_count} tin tức")
+                    st.caption("⚠️ Tin tức nội gian dành cho nhà đầu tư mạo hiểm - Luôn xác minh thông tin trước khi đầu tư")
+                elif news_type == 'mixed':
+                    st.info(f"📊 {source_info} - {news_count} tin tức")
+                    st.caption("📊 Kết hợp tin chính thống và thông tin thị trường")
+                else:
+                    st.success(f"📰 {source_info} - {news_count} tin tức")
+                    st.caption("✅ Tin tức chính thống từ các nguồn uy tín")
                 
+                # Show recommendation if available
+                if market_news.get('recommendation'):
+                    rec = market_news['recommendation']
+                    with st.expander("💡 Khuyến nghị đọc tin", expanded=False):
+                        st.write(f"**Lời khuyên:** {rec.get('advice', '')}")
+                        st.write(f"**Lưu ý:** {rec.get('warning', '')}")
+                        st.write(f"**Tập trung:** {rec.get('focus', '')}")
                 
-                for i, news in enumerate(market_news.get('news', []), 1):
-                    with st.expander(f"🌍 {i}. {news.get('title', 'Không có tiêu đề')}"):
-                        col1, col2 = st.columns([3, 1])
-                        with col1:
-                            st.write(f"**Tóm tắt:** {news.get('summary', 'không có tóm tắt')}")
-                            if news.get('link'):
-                                st.markdown(f"[🔗 Đọc thêm]({news['link']})")
-                        with col2:
-                            st.write(f"**Nguồn:** {news.get('publisher', 'N/A')}")
-                            st.write(f"**Ngày:** {news.get('published', 'N/A')}")
-                            source_type = "🤖 Real" if 'CrewAI' in market_news.get('source', '') else "📋 Sample"
-                            st.write(f"**Loại:** {source_type}")
-                            st.write(f"**Chỉ mục:** {news.get('source_index', 'N/A')}")
+                # Show AI analysis if available
+                if market_news.get('ai_market_analysis'):
+                    with st.expander("🧠 Phân tích AI thị trường VN", expanded=False):
+                        st.markdown(market_news['ai_market_analysis'])
+                        
+                        # Show sentiment and trend
+                        if market_news.get('market_sentiment'):
+                            sentiment = market_news['market_sentiment']
+                            sentiment_color = "#28a745" if sentiment == "BULLISH" else "#dc3545" if sentiment == "BEARISH" else "#ffc107"
+                            st.markdown(f"**📊 Sentiment:** <span style='color: {sentiment_color}'>{sentiment}</span>", unsafe_allow_html=True)
+                        
+                        if market_news.get('market_trend'):
+                            trend = market_news['market_trend']
+                            st.markdown(f"**📈 Xu hướng:** {trend}")
+                
+                # Display news with enhanced details and different styling based on type
+                news_items = market_news.get('news', [])
+                for i, news in enumerate(news_items):
+                    news_source = news.get('source', '')
+                    news_title = news.get('title', 'Không có tiêu đề')
+                    news_type = news.get('type', 'official')
+                    
+                    # Different icons and colors based on source
+                    if 'F319' in news_source or 'F247' in news_source or 'FB Group' in news_source:
+                        icon = "🔥"  # Fire for underground
+                        bg_color = "#ff572222"
+                        border_color = "#ff5722"
+                    elif 'CafeF' in news_source or 'VnEconomy' in news_source:
+                        icon = "📰"  # Newspaper for official
+                        bg_color = "#2196f322"
+                        border_color = "#2196f3"
+                    else:
+                        icon = "📊"  # Chart for mixed
+                        bg_color = "#4caf5022"
+                        border_color = "#4caf50"
+                    
+                    # Enhanced expander with colored background
+                    with st.expander(f"{icon} {news_title}", expanded=False):
+                        # Create colored container for the news content
+                        st.markdown(f"""
+                        <div style="background: {bg_color}; border-left: 4px solid {border_color}; padding: 1rem; border-radius: 8px; margin: 0.5rem 0;">
+                            <strong>📝 Tóm tắt:</strong> {news.get('summary', 'Không có tóm tắt')}<br><br>
+                            <strong>🏢 Nguồn:</strong> {news_source}<br>
+                            <strong>⏰ Thời gian:</strong> {news.get('time', news.get('published', 'Không rõ'))}<br>
+                            <strong>📂 Loại:</strong> {news_type.title()}
+                        </div>
+                        """, unsafe_allow_html=True)
+                        
+                        # Show link if available
+                        if news.get('link') or news.get('url'):
+                            link = news.get('link') or news.get('url')
+                            st.markdown(f"[🔗 Đọc thêm]({link})")
+                        
+                        # Show enhanced details for underground news
+                        if news.get('details'):
+                            details = news['details']
+                            st.markdown("**🔍 Chi tiết nâng cao:**")
+                            
+                            # F319 specific details
+                            if 'F319' in news_source:
+                                if details.get('confidence'):
+                                    st.write(f"• **Độ tin cậy:** {details['confidence']}")
+                                if details.get('source_reliability'):
+                                    st.write(f"• **Độ tin cậy nguồn:** {details['source_reliability']}")
+                                if details.get('risk_level'):
+                                    st.write(f"• **Mức rủi ro:** {details['risk_level']}")
+                            
+                            # F247 specific details
+                            elif 'F247' in news_source:
+                                if details.get('engagement'):
+                                    st.write(f"• **Tương tác:** {details['engagement']}")
+                                if details.get('discussion_quality'):
+                                    st.write(f"• **Chất lượng thảo luận:** {details['discussion_quality']}")
+                            
+                            # General details
+                            if details.get('priority'):
+                                st.write(f"• **Độ ưu tiên:** {details['priority']}")
+                            if details.get('impact_score'):
+                                st.write(f"• **Điểm tác động:** {details['impact_score']}/10")
 
 # Tab 4: Stock News
 with tab4:
@@ -1808,71 +1897,100 @@ with tab5:
 
 # Tab 6: Market News
 with tab6:
-    st.markdown("## 🌍 Tin tức thị trường Việt Nam")
+    st.markdown("## 🌍 Tin tức thị trường Thế Giới")
     
     # Show risk profile info
     risk_profile = "Thận trọng" if risk_tolerance <= 30 else "Cân bằng" if risk_tolerance <= 70 else "Mạo hiểm"
     st.info(f"🎯 Hồ sơ rủi ro: {risk_profile} ({risk_tolerance}%) - Thời gian: {time_horizon}")
     
-    if st.button("🔄 Cập nhật tin tức", type="primary"):
-        with st.spinner("🔍 Đang tải tin tức theo hồ sơ rủi ro..."):
+    if st.button("🔄 Cập nhật tin tức quốc tế", type="primary"):
+        with st.spinner("🔍 Đang lấy tin tức quốc tế theo hồ sơ rủi ro..."):
             loop = asyncio.new_event_loop()
             asyncio.set_event_loop(loop)
-            market_news = loop.run_until_complete(asyncio.to_thread(
-                main_agent.market_news.get_market_news,
-                category="general",
-                risk_tolerance=risk_tolerance,
-                time_horizon=time_horizon,
-                investment_amount=investment_amount
-            ))
+            
+            # Hiển thị tin dựa trên hồ sơ rủi ro
+            if risk_tolerance <= 70:  # Thận trọng và Cân bằng - chỉ tin chính thống
+                international_news = loop.run_until_complete(asyncio.to_thread(
+                    main_agent.international_news.get_international_news
+                ))
+            else:  # Mạo hiểm - tin ngầm + tin chính thống
+                international_news = loop.run_until_complete(asyncio.to_thread(
+                    main_agent.international_news.get_market_news,
+                    "general"
+                ))
+            
             loop.close()
             
-            if market_news.get('error'):
-                st.error(f"❌ {market_news['error']}")
+            if international_news.get('error'):
+                st.error(f"❌ {international_news['error']}")
             else:
                 # Show source info with risk profile
-                source_info = market_news.get('source', 'Unknown')
-                news_count = market_news.get('news_count', 0)
-                news_type = market_news.get('news_type', 'official')
+                source_info = international_news.get('source', 'Unknown')
+                news_count = international_news.get('news_count', 0)
+                news_type = international_news.get('news_type', 'official')
                 
-                if news_type == 'underground':
-                    st.warning(f"🔥 {source_info} - {news_count} tin tức")
-                    st.caption("⚠️ Tin tức nội gian dành cho nhà đầu tư mạo hiểm - Luôn xác minh thông tin trước khi đầu tư")
-                elif news_type == 'mixed':
-                    st.info(f"📊 {source_info} - {news_count} tin tức")
-                    st.caption("📊 Kết hợp tin chính thống và thông tin thị trường")
+                if risk_tolerance > 70:
+                    if news_type == 'underground_mixed':
+                        st.warning(f"🔥 {source_info} - {news_count} tin tức")
+                        st.caption("⚠️ Bao gồm tin ngầm từ Reddit, Twitter và tin chính thống - Dành cho nhà đầu tư mạo hiểm")
+                    else:
+                        st.info(f"📊 {source_info} - {news_count} tin tức")
+                        st.caption("📊 Tin tức quốc tế tổng hợp")
                 else:
                     st.success(f"📰 {source_info} - {news_count} tin tức")
-                    st.caption("✅ Tin tức chính thống từ các nguồn uy tín")
+                    st.caption("✅ Chỉ tin tức chính thống từ các nguồn uy tín")
                 
                 # Show recommendation if available
-                if market_news.get('recommendation'):
-                    rec = market_news['recommendation']
-                    with st.expander("💡 Khuyến nghị đọc tin", expanded=False):
+                if international_news.get('recommendation'):
+                    rec = international_news['recommendation']
+                    with st.expander("💡 Khuyến nghị đọc tin quốc tế", expanded=False):
                         st.write(f"**Lời khuyên:** {rec.get('advice', '')}")
                         st.write(f"**Lưu ý:** {rec.get('warning', '')}")
                         st.write(f"**Tập trung:** {rec.get('focus', '')}")
                 
+                # Show crawl summary if available
+                
+                
+                # Show AI analysis if available
+                if international_news.get('ai_underground_analysis'):
+                    with st.expander("🧠 Phân tích AI tin tức quốc tế", expanded=False):
+                        st.markdown(international_news['ai_underground_analysis'])
+                        
+                        # Show sentiment and risk assessment
+                        if international_news.get('market_sentiment'):
+                            sentiment = international_news['market_sentiment']
+                            sentiment_color = "#28a745" if sentiment == "BULLISH" else "#dc3545" if sentiment == "BEARISH" else "#ffc107"
+                            st.markdown(f"**📊 Market Sentiment:** <span style='color: {sentiment_color}'>{sentiment}</span>", unsafe_allow_html=True)
+                        
+                        if international_news.get('risk_assessment'):
+                            risk_assess = international_news['risk_assessment']
+                            risk_color = "#dc3545" if risk_assess == "HIGH_RISK" else "#28a745" if risk_assess == "LOW_RISK" else "#ffc107"
+                            st.markdown(f"**⚠️ Risk Assessment:** <span style='color: {risk_color}'>{risk_assess}</span>", unsafe_allow_html=True)
+                
                 # Display news with enhanced details and different styling based on type
-                news_items = market_news.get('news', [])
+                news_items = international_news.get('news', [])
                 for i, news in enumerate(news_items):
                     news_source = news.get('source', '')
                     news_title = news.get('title', 'Không có tiêu đề')
                     news_type = news.get('type', 'official')
                     
                     # Different icons and colors based on source
-                    if 'F319' in news_source or 'F247' in news_source or 'FB Group' in news_source:
+                    if 'Reddit' in news_source or 'Twitter' in news_source:
                         icon = "🔥"  # Fire for underground
                         bg_color = "#ff572222"
                         border_color = "#ff5722"
-                    elif 'CafeF' in news_source or 'VnEconomy' in news_source:
-                        icon = "📰"  # Newspaper for official
+                    elif 'Bloomberg' in news_source or 'Financial Times' in news_source or 'Reuters' in news_source:
+                        icon = "📰"  # Newspaper for premium official
                         bg_color = "#2196f322"
                         border_color = "#2196f3"
-                    else:
-                        icon = "📊"  # Chart for mixed
+                    elif 'CafeF' in news_source:
+                        icon = "📊"  # Chart for local official
                         bg_color = "#4caf5022"
                         border_color = "#4caf50"
+                    else:
+                        icon = "🌍"  # Globe for international
+                        bg_color = "#9c27b022"
+                        border_color = "#9c27b0"
                     
                     # Enhanced expander with colored background
                     with st.expander(f"{icon} {news_title}", expanded=False):
@@ -1881,85 +1999,58 @@ with tab6:
                         <div style="background: {bg_color}; border-left: 4px solid {border_color}; padding: 1rem; border-radius: 8px; margin: 0.5rem 0;">
                             <strong>📝 Tóm tắt:</strong> {news.get('summary', 'Không có tóm tắt')}<br><br>
                             <strong>🏢 Nguồn:</strong> {news_source}<br>
-                            <strong>⏰ Thời gian:</strong> {news.get('time', 'Không rõ')}<br>
-                            <strong>📂 Loại:</strong> {news_type.title()}
+                            <strong>⏰ Thời gian:</strong> {news.get('timestamp', news.get('published', 'Không rõ'))}<br>
+                            
                         </div>
                         """, unsafe_allow_html=True)
+                        
+                        # Show link if available
+                        if news.get('url') or news.get('link'):
+                            link = news.get('url') or news.get('link')
+                            st.markdown(f"[🔗 Đọc thêm]({link})")
                         
                         # Show enhanced details for underground news
                         if news.get('details'):
                             details = news['details']
                             st.markdown("**🔍 Chi tiết nâng cao:**")
                             
-                            # F319 specific details
-                            if 'F319' in news_source:
+                            # Reddit specific details
+                            if 'Reddit' in news_source:
+                                if details.get('upvotes'):
+                                    st.write(f"• **Upvotes:** {details['upvotes']}")
+                                if details.get('engagement'):
+                                    st.write(f"• **Comments:** {details['engagement']}")
+                                if details.get('subreddit'):
+                                    st.write(f"• **Subreddit:** r/{details['subreddit']}")
                                 if details.get('confidence'):
                                     st.write(f"• **Độ tin cậy:** {details['confidence']}")
-                                if details.get('source_reliability'):
-                                    st.write(f"• **Độ tin cậy nguồn:** {details['source_reliability']}")
-                                if details.get('risk_level'):
-                                    st.write(f"• **Mức rủi ro:** {details['risk_level']}")
-                                if details.get('pattern'):
-                                    st.write(f"• **Mô hình kỹ thuật:** {details['pattern']}")
-                                if details.get('timeframe'):
-                                    st.write(f"• **Khung thời gian:** {details['timeframe']}")
-                                if details.get('volume_spike'):
-                                    st.write(f"• **Tăng volume:** {details['volume_spike']}")
-                                if details.get('target_week'):
-                                    st.write(f"• **Tuần mục tiêu:** {details['target_week']}")
-                                if details.get('expected_gain'):
-                                    st.write(f"• **Lợi nhuận kỳ vọng:** {details['expected_gain']}")
-                                if details.get('strategy'):
-                                    st.write(f"• **Chiến lược:** {details['strategy']}")
-                                if details.get('wave_analysis'):
-                                    st.write(f"• **Phân tích sóng:** {details['wave_analysis']}")
-                                if details.get('support_level'):
-                                    st.write(f"• **Hỗ trợ:** {details['support_level']}")
-                                if details.get('target_level'):
-                                    st.write(f"• **Mục tiêu:** {details['target_level']}")
                             
-                            # F247 specific details
-                            elif 'F247' in news_source:
-                                if details.get('author'):
-                                    st.write(f"• **Tác giả:** {details['author']}")
-                                if details.get('experience'):
-                                    st.write(f"• **Kinh nghiệm:** {details['experience']}")
-                                if details.get('track_record'):
-                                    st.write(f"• **Thành tích:** {details['track_record']}")
-                                if details.get('allocation'):
-                                    st.write(f"• **Phân bổ danh mục:** {details['allocation']}")
-                                if details.get('margin_ratio'):
-                                    st.write(f"• **Tỷ lệ margin:** {details['margin_ratio']}")
-                                if details.get('timeline'):
-                                    st.write(f"• **Thời gian dự kiến:** {details['timeline']}")
-                                if details.get('opportunity'):
-                                    st.write(f"• **Cơ hội:** {details['opportunity']}")
-                                if details.get('catalysts'):
-                                    st.write(f"• **Catalyst:** {', '.join(details['catalysts']) if isinstance(details['catalysts'], list) else details['catalysts']}")
-                                if details.get('fair_value'):
-                                    st.write(f"• **Giá trị hợp lý:** {details['fair_value']}")
-                                if details.get('upside_potential'):
-                                    st.write(f"• **Tiềm năng tăng:** {details['upside_potential']}")
-                                if details.get('report_length'):
-                                    st.write(f"• **Độ dài báo cáo:** {details['report_length']}")
+                            # Twitter specific details
+                            elif 'Twitter' in news_source:
+                                if details.get('engagement'):
+                                    st.write(f"• **Engagement:** {details['engagement']}")
+                                if details.get('account_followers'):
+                                    st.write(f"• **Followers:** {details['account_followers']}")
+                                if details.get('confidence'):
+                                    st.write(f"• **Độ tin cậy:** {details['confidence']}")
                             
-                            # General details for other sources
-                            else:
-                                for key, value in details.items():
-                                    if value and key not in ['post_url', 'source_url', 'content_preview']:
-                                        formatted_key = key.replace('_', ' ').title()
-                                        st.write(f"• **{formatted_key}:** {value}")
+                            # Official news details
+                            elif details.get('credibility'):
+                                st.write(f"• **Độ tin cậy:** {details['credibility']}")
+                                if details.get('source_type'):
+                                    st.write(f"• **Loại nguồn:** {details['source_type']}")
+                            
+                            # General details
+                            if details.get('priority'):
+                                st.write(f"• **Độ ưu tiên:** {details['priority']}")
+                            if details.get('source_reliability'):
+                                st.write(f"• **Độ tin cậy nguồn:** {details['source_reliability']}")
                         
-                        # Link with enhanced styling
-                        if news.get('link'):
-                            link_text = "🔗 Đọc chi tiết" if news_type == 'underground' else "🔗 Đọc thêm"
-                            st.markdown(f"[{link_text}]({news['link']})")
-                        
-                        # Enhanced warning for underground news
-                        if news_type == 'underground':
-                            st.error("🚨 **CẢNH BÁO:** Thông tin nội gián từ cộng đồng trader - Luôn DYOR (Do Your Own Research) trước khi đầu tư!")
-                        elif 'F319' in news_source or 'F247' in news_source:
-                            st.warning("⚠️ **LƯU Ý:** Thông tin từ diễn đàn chuyên nghiệp - Cần xác minh và phân tích kỹ trước khi sử dụng")
+                        # Enhanced warning for underground news (only show for high risk users)
+                        #if risk_tolerance > 70 and (news_type == 'underground' or 'Reddit' in news_source or 'Twitter' in news_source):
+                            #st.error("🚨 **CẢNH BÁO:** Thông tin từ mạng xã hội - Luôn DYOR (Do Your Own Research) trước khi đầu tư!")
+                        #elif 'Bloomberg' in news_source or 'Reuters' in news_source or 'Financial Times' in news_source:
+                            #st.success("✅ **TIN CẬY:** Nguồn tin uy tín từ tổ chức tài chính hàng đầu")
 
 # Professional Footer
 st.markdown("---")

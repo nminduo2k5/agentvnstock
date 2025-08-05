@@ -2,6 +2,8 @@ import requests
 from bs4 import BeautifulSoup
 from datetime import datetime
 import re
+import asyncio
+from agents.international_underground_news import InternationalUndergroundNewsAgent
 
 class InternationalMarketNews:
     def __init__(self):
@@ -13,10 +15,13 @@ class InternationalMarketNews:
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
         }
         self.ai_agent = None  # Will be set by main_agent
+        self.underground_agent = InternationalUndergroundNewsAgent()
     
     def set_ai_agent(self, ai_agent):
         """Set AI agent for enhanced international news analysis"""
         self.ai_agent = ai_agent
+        # Also set AI agent for underground news agent
+        self.underground_agent.set_ai_agent(ai_agent)
     
     def get_international_news(self):
         """Lấy tin tức thị trường quốc tế với AI analysis"""
@@ -53,23 +58,75 @@ class InternationalMarketNews:
             print(f"❌ Error crawling CafeF: {e}")
             return self._get_international_mock_news()
     
-    def get_market_news(self, category: str = "general"):
+    def get_market_news(self, category="general", risk_tolerance=50, time_horizon="Trung hạn", investment_amount=10000000, **kwargs):
+        """Get international market news based on risk profile"""
+        return self._get_market_news_impl(category, risk_tolerance, time_horizon, investment_amount)
+    
+    def _get_market_news_impl(self, category: str = "general", risk_tolerance: int = 50, time_horizon: str = "Trung hạn", investment_amount: int = 10000000):
+        """Get international market news based on risk profile"""
         try:
-            # Try CafeF first
-            cafef_news = self._crawl_cafef_news()
-            if cafef_news:
-                return {
-                    "category": "International Market",
-                    "news_count": len(cafef_news),
-                    "news": cafef_news,
-                    "source": "CafeF.vn"
-                }
-            else:
-                # Fallback to mock international news
-                return self._get_international_mock_news()
+            # Get underground news based on risk profile first
+            try:
+                loop = asyncio.new_event_loop()
+                asyncio.set_event_loop(loop)
+                underground_news = loop.run_until_complete(
+                    self.underground_agent.get_underground_news_by_risk_profile(
+                        risk_tolerance, time_horizon, investment_amount
+                    )
+                )
+                loop.close()
+                
+                if not underground_news.get('error'):
+                    base_news = {
+                        "category": "International Market",
+                        "news_count": underground_news['news_count'],
+                        "news": underground_news['news'],
+                        "source": underground_news['source'],
+                        "risk_profile": underground_news['risk_profile'],
+                        "news_type": underground_news['news_type'],
+                        "recommendation": underground_news.get('recommendation'),
+                        "crawl_summary": underground_news.get('crawl_summary')
+                    }
+                    
+                    # Add AI analysis if available
+                    if underground_news.get('ai_underground_analysis'):
+                        base_news['ai_underground_analysis'] = underground_news['ai_underground_analysis']
+                        base_news['ai_enhanced'] = True
+                        base_news['market_sentiment'] = underground_news.get('market_sentiment')
+                        base_news['risk_assessment'] = underground_news.get('risk_assessment')
+                    
+                    return base_news
+                else:
+                    raise Exception("Underground news failed")
+                    
+            except Exception as e:
+                print(f"⚠️ Underground news failed: {e}")
+                # Fallback to traditional CafeF news
+                cafef_news = self._crawl_cafef_news()
+                if cafef_news:
+                    base_news = {
+                        "category": "International Market",
+                        "news_count": len(cafef_news),
+                        "news": cafef_news,
+                        "source": "📰 CafeF.vn (Tin chính thống)",
+                        "risk_profile": "Default",
+                        "news_type": "official"
+                    }
+                    
+                    # Enhance with AI analysis if available
+                    if self.ai_agent:
+                        try:
+                            ai_enhancement = self._get_ai_international_analysis(base_news)
+                            base_news.update(ai_enhancement)
+                        except Exception as ai_e:
+                            print(f"⚠️ AI analysis failed: {ai_e}")
+                    
+                    return base_news
+                else:
+                    return self._get_international_mock_news()
 
         except Exception as e:
-            print(f"❌ Error crawling CafeF: {e}")
+            print(f"❌ Error in international market news: {e}")
             return self._get_international_mock_news()
 
     def _crawl_cafef_news(self):
