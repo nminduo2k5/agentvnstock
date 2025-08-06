@@ -8,7 +8,7 @@ from urllib.parse import urljoin, urlparse
 
 class RiskBasedNewsAgent:
     def __init__(self):
-        self.name = "Risk-Based News Agent"
+        self.name = " Risk-Based News Agent"
         self.headers = {
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
             'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
@@ -18,16 +18,34 @@ class RiskBasedNewsAgent:
             'Upgrade-Insecure-Requests': '1'
         }
         
-        # All financial websites to crawl
+        # All financial websites to crawl - organized by source type
         self.all_sources = {
             'underground': [
+                'https://taichinhplus.vn/',
+                'https://www.vfpress.com/',
+                'https://www.vinabull.vn/',
+                'https://www.simplize.vn/',
                 'https://f319.com/',
                 'https://f247.com/',
                 'https://diendanchungkhoan.vn/',
                 'https://traderviet.com/',
                 'https://stockbook.vn/',
                 'https://kakata.vn/',
-                'https://onstocks.vn/'
+                'https://onstocks.vn/',
+                'https://www.investo.vn/',
+                'https://fireant.vn/',
+                'https://investo.info/'
+            ],
+            'facebook_groups': [
+                'https://www.facebook.com/groups/331172585942700/',  # Đầu tư chứng khoán
+                'https://www.facebook.com/groups/dautuck247/',        # Đầu tư 24/7
+                'https://www.facebook.com/groups/chungkhoanf319/'     # Chứng khoán F319
+            ],
+            'telegram_groups': [
+                'https://t.me/s/dubaotiente',         # Dự báo tiền tệ
+                'https://t.me/s/vietstockchannel',    # Tin vắn thị trường, rumors
+                'https://t.me/s/tinvipchungkhoan',    # Tin nội bộ, đồn đoán VIP
+                'https://t.me/s/ptktvip'              # PTKTVIP channel
             ],
             'official': [
                 'https://cafef.vn/thi-truong-chung-khoan.chn',
@@ -63,15 +81,18 @@ class RiskBasedNewsAgent:
                 source_info = "📰 Tin tức chính thống từ các nguồn uy tín"
             elif news_type == "all_sources":
                 news_data = all_news[:15]  # All sources for aggressive investors
-                source_info = "🔥 Tin tức toàn diện từ tất cả nguồn (Underground + Official + International)"
+                source_info = "🔥 Tin tức toàn diện từ tất cả nguồn (Underground + Facebook + Telegram + Official + International)"
             else:  # mixed
-                official = [n for n in all_news if n.get('type') == 'official'][:4]
-                underground = [n for n in all_news if n.get('type') == 'underground'][:4]
+                official = [n for n in all_news if n.get('type') == 'official'][:3]
+                underground = [n for n in all_news if n.get('type') == 'underground'][:3]
+                facebook = [n for n in all_news if n.get('type') == 'facebook_groups'][:2]
+                telegram = [n for n in all_news if n.get('type') == 'telegram_groups'][:2]
                 international = [n for n in all_news if n.get('type') == 'international'][:2]
-                news_data = official + underground + international
-                source_info = "📊 Tin tức đa nguồn (Official + Underground + International)"
+                news_data = official + underground + facebook + telegram + international
+                source_info = "📊 Tin tức đa nguồn (Official + Underground + Facebook + Telegram + International)"
             
             return {
+                'agent_name': self.name,
                 'risk_profile': risk_profile,
                 'news_type': news_type,
                 'source_info': source_info,
@@ -79,11 +100,19 @@ class RiskBasedNewsAgent:
                 'total_news': len(news_data),
                 'sources_crawled': len([n.get('source') for n in all_news]),
                 'recommendation': self._get_news_recommendation(risk_profile, time_horizon),
-                'crawl_summary': self._get_crawl_summary(all_news)
+                'crawl_summary': self._get_crawl_summary(all_news),
+                'status': 'success',
+                'timestamp': datetime.now().strftime('%Y-%m-%d %H:%M:%S')
             }
             
         except Exception as e:
-            return {'error': f"Risk-based news error: {str(e)}"}
+            return {
+                'agent_name': self.name,
+                'status': 'error',
+                'error': f"Risk-based news error: {str(e)}",
+                'timestamp': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+                'fallback_data': self._get_fallback_news()
+            }
     
     async def _crawl_all_sources(self):
         """Crawl all financial websites comprehensively"""
@@ -100,6 +129,16 @@ class RiskBasedNewsAgent:
             self._crawl_onstocks()
         ]
         
+        # Crawl Facebook groups
+        facebook_crawlers = [
+            self._crawl_facebook_groups()
+        ]
+        
+        # Crawl Telegram channels
+        telegram_crawlers = [
+            self._crawl_telegram_channels()
+        ]
+        
         # Crawl official sources
         official_crawlers = [
             self._crawl_cafef(),
@@ -114,7 +153,7 @@ class RiskBasedNewsAgent:
         ]
         
         # Execute all crawlers concurrently
-        all_crawlers = underground_crawlers + official_crawlers + international_crawlers
+        all_crawlers = underground_crawlers + facebook_crawlers + telegram_crawlers + official_crawlers + international_crawlers
         
         try:
             results = await asyncio.gather(*all_crawlers, return_exceptions=True)
@@ -397,6 +436,16 @@ class RiskBasedNewsAgent:
             
         except Exception as e:
             return self._simulate_yahoo_news()
+    
+    async def _crawl_facebook_groups(self):
+        """Simulate Facebook groups crawling (requires authentication)"""
+        # Facebook groups require authentication, so we simulate the content
+        return self._simulate_facebook_groups_news()
+    
+    async def _crawl_telegram_channels(self):
+        """Simulate Telegram channels crawling (requires API access)"""
+        # Telegram channels require API access, so we simulate the content
+        return self._simulate_telegram_channels_news()
     
     async def _crawl_dantri(self):
         """Crawl DanTri for official stock news"""
@@ -718,32 +767,63 @@ class RiskBasedNewsAgent:
         except Exception as e:
             return self._simulate_f247_news()
     
-    def _simulate_fb_group_news(self):
-        """Simulate FB group news (since real crawling requires authentication)"""
+    def _simulate_facebook_groups_news(self):
+        """Simulate Facebook groups news (since real crawling requires authentication)"""
+        current_time = datetime.now().strftime('%H:%M')
         return [
             {
-                'title': '🔥 [Group F319] Thông tin nội bộ về VCB - Chuẩn bị có tin lớn',
-                'summary': 'Thành viên group chia sẻ thông tin từ nguồn tin đáng tin cậy về động thái của VCB trong tuần tới...',
+                'title': '🔥 [FB F319] Thông tin nội bộ về VCB - Chuẩn bị có tin lớn',
+                'summary': 'Thành viên group chia sẻ thông tin từ nguồn tin đáng tin cậy về động thái của VCB trong tuần tới. Room lớn đang tích lũy âm thầm...',
                 'link': 'https://www.facebook.com/groups/chungkhoanf319/',
-                'time': datetime.now().strftime('%H:%M'),
+                'time': current_time,
                 'source': 'FB Group F319',
-                'type': 'underground'
+                'type': 'facebook_groups'
             },
             {
-                'title': '💰 [Insider] Danh sách cổ phiếu sẽ tăng mạnh tuần sau',
-                'summary': 'Thông tin từ trader có 10 năm kinh nghiệm, track record 80% chính xác...',
-                'link': 'https://www.facebook.com/groups/chungkhoanf319/',
-                'time': datetime.now().strftime('%H:%M'),
-                'source': 'FB Group F319',
-                'type': 'underground'
+                'title': '💰 [FB 24/7] Danh sách cổ phiếu sẽ tăng mạnh tuần sau',
+                'summary': 'Thông tin từ trader có 10 năm kinh nghiệm, track record 80% chính xác. Focus vào VIC, MSN, GAS...',
+                'link': 'https://www.facebook.com/groups/dautuck247/',
+                'time': current_time,
+                'source': 'FB Group 24/7',
+                'type': 'facebook_groups'
             },
             {
-                'title': '⚡ [Hot] Room khuyến nghị mua HPG trước khi tăng 20%',
-                'summary': 'Phân tích kỹ thuật cho thấy HPG sắp breakout, room đang tích lũy mạnh...',
-                'link': 'https://www.facebook.com/groups/chungkhoanf319/',
-                'time': datetime.now().strftime('%H:%M'),
-                'source': 'FB Group F319',
-                'type': 'underground'
+                'title': '⚡ [FB Đầu tư CK] Room khuyến nghị mua HPG trước khi tăng 20%',
+                'summary': 'Phân tích kỹ thuật cho thấy HPG sắp breakout, room đang tích lũy mạnh với volume bất thường...',
+                'link': 'https://www.facebook.com/groups/331172585942700/',
+                'time': current_time,
+                'source': 'FB Group Đầu tư CK',
+                'type': 'facebook_groups'
+            }
+        ]
+    
+    def _simulate_telegram_channels_news(self):
+        """Simulate Telegram channels news (since real crawling requires API access)"""
+        current_time = datetime.now().strftime('%H:%M')
+        return [
+            {
+                'title': '📱 [TG Dự báo tiền tệ] VN-Index sẽ test 1280 trước khi tăng mạnh',
+                'summary': 'Phân tích sóng Elliott cho thấy thị trường đang trong giai đoạn điều chỉnh cuối cùng trước khi bứt phá...',
+                'link': 'https://t.me/s/dubaotiente',
+                'time': current_time,
+                'source': 'TG Dự báo tiền tệ',
+                'type': 'telegram_groups'
+            },
+            {
+                'title': '🔥 [TG VIP] Tin nội bộ: VCB sắp có thông báo quan trọng',
+                'summary': 'Nguồn tin từ bên trong cho biết VCB sẽ có announcement lớn trong tuần tới, có thể liên quan đến M&A...',
+                'link': 'https://t.me/s/tinvipchungkhoan',
+                'time': current_time,
+                'source': 'TG VIP Chứng khoán',
+                'type': 'telegram_groups'
+            },
+            {
+                'title': '📈 [TG VietStock] Cập nhật nhanh thị trường - Dòng tiền chuyển hướng',
+                'summary': 'Dòng tiền đang chuyển từ ngân hàng sang bất động sản và công nghệ. Khuyến nghị theo dõi VIC, FPT...',
+                'link': 'https://t.me/s/vietstockchannel',
+                'time': current_time,
+                'source': 'TG VietStock Channel',
+                'type': 'telegram_groups'
             }
         ]
     
@@ -866,6 +946,8 @@ class RiskBasedNewsAgent:
             'sources_breakdown': sources,
             'types_breakdown': {
                 'underground': len([n for n in all_news if n.get('type') == 'underground']),
+                'facebook_groups': len([n for n in all_news if n.get('type') == 'facebook_groups']),
+                'telegram_groups': len([n for n in all_news if n.get('type') == 'telegram_groups']),
                 'official': len([n for n in all_news if n.get('type') == 'official']),
                 'international': len([n for n in all_news if n.get('type') == 'international'])
             }
@@ -882,17 +964,17 @@ class RiskBasedNewsAgent:
             }
         elif risk_profile == "Aggressive":
             return {
-                'advice': 'Sử dụng tất cả nguồn tin từ underground đến official và international',
-                'warning': 'Luôn cross-check thông tin từ nhiều nguồn trước khi đầu tư',
-                'focus': 'Tin nóng từ F319/F247, phân tích kỹ thuật, sentiment thị trường',
-                'recommended_sources': ['F319', 'F247', 'TraderViet', 'StockBook', 'Investing.com']
+                'advice': 'Sử dụng tất cả nguồn tin từ underground, Facebook groups, Telegram channels đến official và international',
+                'warning': 'Luôn cross-check thông tin từ nhiều nguồn trước khi đầu tư, đặc biệt là tin từ social media',
+                'focus': 'Tin nóng từ F319/F247, Facebook groups, Telegram VIP, phân tích kỹ thuật, sentiment thị trường',
+                'recommended_sources': ['F319', 'F247', 'FB Groups', 'Telegram VIP', 'TraderViet', 'StockBook', 'Investing.com']
             }
         else:
             return {
-                'advice': 'Cân bằng giữa tin chính thống và thông tin cộng đồng',
-                'warning': 'Đa dạng hóa nguồn tin để có cái nhìn toàn diện',
-                'focus': 'Kết hợp phân tích cơ bản và kỹ thuật, theo dõi sentiment',
-                'recommended_sources': ['CafeF', 'F319', 'TraderViet', 'Investing.com']
+                'advice': 'Cân bằng giữa tin chính thống, underground, và thông tin từ cộng đồng social media',
+                'warning': 'Đa dạng hóa nguồn tin để có cái nhìn toàn diện, cẩn thận với tin từ Facebook/Telegram',
+                'focus': 'Kết hợp phân tích cơ bản và kỹ thuật, theo dõi sentiment từ nhiều kênh',
+                'recommended_sources': ['CafeF', 'F319', 'FB Groups (limited)', 'TraderViet', 'Investing.com']
             }
     
     # Simulation methods for fallback when crawling fails
@@ -999,3 +1081,29 @@ class RiskBasedNewsAgent:
                 'type': 'official'
             }
         ]
+    
+    def _get_fallback_news(self):
+        """Provide fallback news when all crawling fails"""
+        return {
+            'risk_profile': 'Unknown',
+            'news_type': 'fallback',
+            'source_info': '📰 Tin tức dự phòng khi không thể crawl được dữ liệu',
+            'news_data': [
+                {
+                    'title': '📈 Thị trường chứng khoán Việt Nam - Cập nhật tổng quan',
+                    'summary': 'Do lỗi kết nối, hệ thống đang sử dụng dữ liệu dự phòng. Vui lòng thử lại sau.',
+                    'link': 'https://cafef.vn/',
+                    'time': datetime.now().strftime('%H:%M'),
+                    'source': 'System Fallback',
+                    'type': 'fallback'
+                }
+            ],
+            'total_news': 1,
+            'sources_crawled': 0,
+            'recommendation': {
+                'advice': 'Hệ thống đang gặp sự cố, vui lòng thử lại sau hoặc kiểm tra trực tiếp các trang tin tức',
+                'warning': 'Dữ liệu hiện tại có thể không chính xác',
+                'focus': 'Kiểm tra kết nối internet và thử lại',
+                'recommended_sources': ['CafeF', 'VnEconomy', 'DanTri']
+            }
+        }

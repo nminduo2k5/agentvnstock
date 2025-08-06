@@ -34,7 +34,13 @@ class InternationalUndergroundNewsAgent:
             'zerohedge': 'https://www.zerohedge.com/',
             'seekingalpha': 'https://seekingalpha.com/',
             'agorafinancial': 'https://agorafinancial.com/',
-            'insidermonkey': 'https://www.insidermonkey.com/'
+            'insidermonkey': 'https://www.insidermonkey.com/',
+            'wolfstreet': 'https://wolfstreet.com/',
+            'oilprice': 'https://oilprice.com/',
+            'armstrongeconomics': 'https://www.armstrongeconomics.com/',
+            'macrotrends': 'https://www.macrotrends.net/',
+            'investing': 'https://www.investing.com/news/',
+            'shadowstats': 'https://www.shadowstats.com/'
         }
         
         # Forum sources for underground discussions

@@ -228,7 +228,7 @@ def display_price_prediction(pred, investment_amount=10000000, risk_tolerance=50
     
     # Information display header
     st.markdown(f"""
-    <div style="background: #f8f9fa; color: #333; padding: 20px; border-radius: 12px; margin: 10px 0; border: 1px solid #dee2e6;">
+    <div style="background: #242ccc; color: #333; padding: 20px; border-radius: 12px; margin: 10px 0; border: 1px solid #dee2e6;">
         <div style="text-align: center;">
             <h3 style="margin: 0; font-size: 24px;">DỰ ĐOÁN GIÁ - {prediction_method}</h3>
             <p style="margin: 5px 0; font-size: 16px;">Điểm kỹ thuật: {tech_score}</p>
@@ -1678,7 +1678,14 @@ with tab3:
                 
                 # Display news with enhanced details and different styling based on type
                 news_items = market_news.get('news', [])
-                for i, news in enumerate(news_items):
+                
+                # Filter news based on risk profile
+                if risk_tolerance <= 70:  # Conservative and Balanced - only official news
+                    filtered_news = [news for news in news_items if news.get('type', 'official') == 'official']
+                else:  # Aggressive - all news including underground
+                    filtered_news = news_items
+                
+                for i, news in enumerate(filtered_news):
                     news_source = news.get('source', '')
                     news_title = news.get('title', 'Không có tiêu đề')
                     news_type = news.get('type', 'official')
@@ -1714,8 +1721,8 @@ with tab3:
                             link = news.get('link') or news.get('url')
                             st.markdown(f"[🔗 Đọc thêm]({link})")
                         
-                        # Show enhanced details for underground news
-                        if news.get('details'):
+                        # Show enhanced details for underground news (only for aggressive investors)
+                        if news.get('details') and risk_tolerance > 70:
                             details = news['details']
                             st.markdown("**🔍 Chi tiết nâng cao:**")
                             
@@ -1740,6 +1747,10 @@ with tab3:
                                 st.write(f"• **Độ ưu tiên:** {details['priority']}")
                             if details.get('impact_score'):
                                 st.write(f"• **Điểm tác động:** {details['impact_score']}/10")
+                        
+                        # Show warning for underground news (only for aggressive investors)
+                        if news_type == 'underground' and risk_tolerance > 70:
+                            st.error("🚨 **CẢNH BÁO:** Tin tức nội gian - Luôn xác minh thông tin trước khi đầu tư!")
 
 # Tab 4: Stock News
 with tab4:
@@ -1870,14 +1881,52 @@ with tab5:
                             </div>
                             """, unsafe_allow_html=True)
                             
+                            # Data source info
+                            news_count = company_data.get('news_count', 0)
+                            data_source = company_data.get('source', 'Enhanced Company Data')
+                            st.success(f"✅ Đã tải {news_count} tin tức từ {data_source}")
+                            
                             # Sentiment analysis
                             sentiment = company_data.get('sentiment', 'Trung tính')
                             sentiment_color = "#28a745" if sentiment == "Positive" else "#dc3545" if sentiment == "Negative" else "#ffc107"
                             
-                           
-                            
-                            # Headlines
-                            if company_data.get('headlines'):
+                            if sentiment != 'Trung tính':
+                                st.markdown(f"""
+                                <div style="background: {sentiment_color}22; border-left: 4px solid {sentiment_color}; padding: 1rem; border-radius: 8px; margin: 1rem 0;">
+                                    <strong>📊 Sentiment phân tích:</strong> <span style="color: {sentiment_color}">{sentiment}</span>
+                                </div>
+                                """, unsafe_allow_html=True)
+
+                            # News with links
+                            news_items = company_data.get('news', [])
+                            if news_items:
+                                st.markdown("### 📰 Tin tức công ty")
+                                for i, news in enumerate(news_items, 1):
+                                    title = news.get('title', 'Không có tiêu đề')
+                                    summary = news.get('summary', 'Không có tóm tắt')
+                                    link = news.get('link', '')
+                                    source = news.get('source', 'Không rõ nguồn')
+                                    published = news.get('published', 'Không rõ thời gian')
+                                    priority = news.get('priority', 1)
+                                    
+                                    # Priority icon
+                                    priority_icon = "🔥" if priority >= 3 else "📰" if priority >= 2 else "📄"
+                                    
+                                    with st.expander(f"{priority_icon} {i}. {title}", expanded=False):
+                                        col1, col2 = st.columns([3, 1])
+                                        with col1:
+                                            st.write(f"**📝 Tóm tắt:** {summary}")
+                                            if link:
+                                                st.markdown(f"[🔗 Đọc bài viết đầy đủ]({link})")
+                                            else:
+                                                st.write("🔗 Không có link bài viết")
+                                        with col2:
+                                            st.write(f"**🏢 Nguồn:** {source}")
+                                            st.write(f"**⏰ Thời gian:** {published}")
+                                            st.write(f"**⭐ Độ ưu tiên:** {priority}/3")
+                                            
+                            # Headlines (fallback if no news items)
+                            elif company_data.get('headlines'):
                                 st.markdown("### 📰 Tiêu đề chính")
                                 for headline in company_data['headlines']:
                                     if isinstance(headline, dict):
@@ -1891,6 +1940,41 @@ with tab5:
                                     else:
                                         # If headline is just a string
                                         st.markdown(f"• {headline}")
+                    
+                            # Financial metrics if available
+                            financial_metrics = company_data.get('financial_metrics', {})
+                            if financial_metrics:
+                                st.markdown("### 💰 Chỉ số tài chính")
+                                col1, col2, col3, col4 = st.columns(4)
+                                with col1:
+                                    if financial_metrics.get('market_cap'):
+                                        st.metric("Vốn hóa", financial_metrics['market_cap'])
+                                with col2:
+                                    if financial_metrics.get('pe_ratio'):
+                                        st.metric("P/E", financial_metrics['pe_ratio'])
+                                with col3:
+                                    if financial_metrics.get('pb_ratio'):
+                                        st.metric("P/B", financial_metrics['pb_ratio'])
+                                with col4:
+                                    if financial_metrics.get('dividend_yield'):
+                                        st.metric("Cổ tức", financial_metrics['dividend_yield'])
+                            
+                            # Analysis summary if available
+                            analysis = company_data.get('analysis', {})
+                            if analysis:
+                                with st.expander("🧠 Phân tích AI chi tiết", expanded=False):
+                                    if analysis.get('impact_level'):
+                                        st.write(f"**📊 Mức độ tác động:** {analysis['impact_level']}")
+                                    if analysis.get('recommendation'):
+                                        st.write(f"**💡 Khuyến nghị:** {analysis['recommendation']}")
+                                    if analysis.get('confidence'):
+                                        st.write(f"**🎯 Độ tin cậy:** {analysis['confidence']}")
+                                    if analysis.get('positive_news'):
+                                        st.write(f"**📈 Tin tích cực:** {analysis['positive_news']}")
+                                    if analysis.get('negative_news'):
+                                        st.write(f"**📉 Tin tiêu cực:** {analysis['negative_news']}")
+                                    if analysis.get('neutral_news'):
+                                        st.write(f"**➡️ Tin trung tính:** {analysis['neutral_news']}")
                     
                     except Exception as e:
                         st.error(f"❌ Lỗi: {e}")
