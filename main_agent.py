@@ -11,6 +11,7 @@ from src.utils.error_handler import handle_async_errors, AgentErrorHandler, vali
 from fastapi.concurrency import run_in_threadpool
 import asyncio
 import logging
+from datetime import datetime
 
 logger = logging.getLogger(__name__)
 
@@ -431,3 +432,5 @@ class MainAgent:
     def display_price_chart(self, price_history, symbol):
         """Display price chart - delegate to stock_info"""
         return self.stock_info.display_price_chart(price_history, symbol)
+    
+
