@@ -411,10 +411,10 @@ class CrewAIDataCollector:
 
     
     def _get_fallback_symbols(self) -> List[Dict[str, str]]:
-        """Enhanced fallback symbols list with real VN stocks - Updated for CrewAI compatibility"""
-        logger.info("📋 Using enhanced fallback symbols (37 real VN stocks)")
+        """Enhanced fallback symbols list with 65+ diverse VN stocks across all major sectors"""
+        logger.info("📋 Using comprehensive fallback symbols (65+ real VN stocks across 12 sectors)")
         return [
-            # Banking
+            # Banking (10 stocks)
             {'symbol': 'VCB', 'name': 'Ngân hàng TMCP Ngoại thương Việt Nam', 'sector': 'Banking', 'exchange': 'HOSE'},
             {'symbol': 'BID', 'name': 'Ngân hàng TMCP Đầu tư và Phát triển VN', 'sector': 'Banking', 'exchange': 'HOSE'},
             {'symbol': 'CTG', 'name': 'Ngân hàng TMCP Công thương Việt Nam', 'sector': 'Banking', 'exchange': 'HOSE'},
@@ -422,42 +422,94 @@ class CrewAIDataCollector:
             {'symbol': 'ACB', 'name': 'Ngân hàng TMCP Á Châu', 'sector': 'Banking', 'exchange': 'HOSE'},
             {'symbol': 'MBB', 'name': 'Ngân hàng TMCP Quân đội', 'sector': 'Banking', 'exchange': 'HOSE'},
             {'symbol': 'VPB', 'name': 'Ngân hàng TMCP Việt Nam Thịnh Vượng', 'sector': 'Banking', 'exchange': 'HOSE'},
+            {'symbol': 'TPB', 'name': 'Ngân hàng TMCP Tiên Phong', 'sector': 'Banking', 'exchange': 'HOSE'},
+            {'symbol': 'STB', 'name': 'Ngân hàng TMCP Sài Gòn Thương Tín', 'sector': 'Banking', 'exchange': 'HOSE'},
+            {'symbol': 'EIB', 'name': 'Ngân hàng TMCP Xuất Nhập khẩu Việt Nam', 'sector': 'Banking', 'exchange': 'HOSE'},
             
-            # Real Estate
+            # Real Estate (8 stocks)
             {'symbol': 'VIC', 'name': 'Tập đoàn Vingroup', 'sector': 'Real Estate', 'exchange': 'HOSE'},
             {'symbol': 'VHM', 'name': 'Công ty CP Vinhomes', 'sector': 'Real Estate', 'exchange': 'HOSE'},
             {'symbol': 'VRE', 'name': 'Công ty CP Vincom Retail', 'sector': 'Real Estate', 'exchange': 'HOSE'},
             {'symbol': 'DXG', 'name': 'Tập đoàn Đất Xanh', 'sector': 'Real Estate', 'exchange': 'HOSE'},
             {'symbol': 'NVL', 'name': 'Công ty CP Tập đoàn Đầu tư Địa ốc No Va', 'sector': 'Real Estate', 'exchange': 'HOSE'},
+            {'symbol': 'PDR', 'name': 'Công ty CP Phát triển Bất động sản Phát Đạt', 'sector': 'Real Estate', 'exchange': 'HOSE'},
+            {'symbol': 'KDH', 'name': 'Công ty CP Đầu tư và Kinh doanh Nhà Khang Điền', 'sector': 'Real Estate', 'exchange': 'HOSE'},
+            {'symbol': 'BCM', 'name': 'Tổng Công ty Đầu tư và Phát triển Công nghiệp', 'sector': 'Real Estate', 'exchange': 'HOSE'},
             
-            # Consumer & Retail
+            # Consumer & Retail (8 stocks)
             {'symbol': 'MSN', 'name': 'Tập đoàn Masan', 'sector': 'Consumer', 'exchange': 'HOSE'},
             {'symbol': 'MWG', 'name': 'Công ty CP Đầu tư Thế Giới Di Động', 'sector': 'Consumer', 'exchange': 'HOSE'},
             {'symbol': 'VNM', 'name': 'Công ty CP Sữa Việt Nam', 'sector': 'Consumer', 'exchange': 'HOSE'},
             {'symbol': 'SAB', 'name': 'Tổng Công ty CP Bia - Rượu - NGK Sài Gòn', 'sector': 'Consumer', 'exchange': 'HOSE'},
             {'symbol': 'PNJ', 'name': 'Công ty CP Vàng bạc Đá quý Phú Nhuận', 'sector': 'Consumer', 'exchange': 'HOSE'},
+            {'symbol': 'FRT', 'name': 'Công ty CP Bán lẻ Kỹ thuật số FPT', 'sector': 'Consumer', 'exchange': 'HOSE'},
+            {'symbol': 'VGC', 'name': 'Công ty CP Xuất nhập khẩu Viglacera', 'sector': 'Consumer', 'exchange': 'HOSE'},
+            {'symbol': 'MCH', 'name': 'Công ty CP Hàng tiêu dùng Masan', 'sector': 'Consumer', 'exchange': 'HOSE'},
             
-            # Industrial & Materials
+            # Industrial & Materials (7 stocks)
             {'symbol': 'HPG', 'name': 'Tập đoàn Hòa Phát', 'sector': 'Industrial', 'exchange': 'HOSE'},
             {'symbol': 'HSG', 'name': 'Tập đoàn Hoa Sen', 'sector': 'Industrial', 'exchange': 'HOSE'},
             {'symbol': 'NKG', 'name': 'Công ty CP Thép Nam Kim', 'sector': 'Industrial', 'exchange': 'HOSE'},
-            
-            # Utilities & Energy
+            {'symbol': 'SMC', 'name': 'Công ty CP Đầu tư Thương mại SMC', 'sector': 'Industrial', 'exchange': 'HOSE'},
+            {'symbol': 'TLG', 'name': 'Tập đoàn Thiên Long', 'sector': 'Industrial', 'exchange': 'HOSE'},
+            {'symbol': 'DGC', 'name': 'Tập đoàn Hóa chất Đức Giang', 'sector': 'Industrial', 'exchange': 'HOSE'},
+            {'symbol': 'BMP', 'name': 'Công ty CP Nhựa Bình Minh', 'sector': 'Industrial', 'exchange': 'HOSE'},
+            {'symbol': 'VCS', 'name': 'Công ty CP Vicostone', 'sector': 'Industrial & Materials', 'exchange': 'HNX'},
+            # Utilities & Energy (6 stocks)
             {'symbol': 'GAS', 'name': 'Tổng Công ty Khí Việt Nam', 'sector': 'Utilities', 'exchange': 'HOSE'},
             {'symbol': 'PLX', 'name': 'Tập đoàn Xăng dầu Việt Nam', 'sector': 'Utilities', 'exchange': 'HOSE'},
             {'symbol': 'POW', 'name': 'Tổng Công ty Điện lực Dầu khí Việt Nam', 'sector': 'Utilities', 'exchange': 'HOSE'},
+            {'symbol': 'NT2', 'name': 'Công ty CP Nhiệt điện Ninh Thuận', 'sector': 'Utilities', 'exchange': 'HOSE'},
+            {'symbol': 'REE', 'name': 'Công ty CP Cơ Điện Lạnh', 'sector': 'Utilities', 'exchange': 'HOSE'},
+            {'symbol': 'PC1', 'name': 'Tổng Công ty Điện lực Dầu khí Việt Nam - CTCP', 'sector': 'Utilities', 'exchange': 'HOSE'},
             
-            # Technology
+            # Technology (5 stocks)
             {'symbol': 'FPT', 'name': 'Công ty CP FPT', 'sector': 'Technology', 'exchange': 'HOSE'},
             {'symbol': 'CMG', 'name': 'Công ty CP Tin học CMC', 'sector': 'Technology', 'exchange': 'HOSE'},
+            {'symbol': 'VGI', 'name': 'Công ty CP Đầu tư Văn Phú - Invest', 'sector': 'Technology', 'exchange': 'HOSE'},
+            {'symbol': 'ITD', 'name': 'Công ty CP Đầu tư và Phát triển Công nghệ', 'sector': 'Technology', 'exchange': 'HOSE'},
+            {'symbol': 'ELC', 'name': 'Công ty CP Điện tử Elcom', 'sector': 'Technology', 'exchange': 'HOSE'},
             
-            # Transportation
+            # Transportation & Logistics (5 stocks)
             {'symbol': 'VJC', 'name': 'Công ty CP Hàng không VietJet', 'sector': 'Transportation', 'exchange': 'HOSE'},
             {'symbol': 'HVN', 'name': 'Tổng Công ty Hàng không Việt Nam', 'sector': 'Transportation', 'exchange': 'HOSE'},
+            {'symbol': 'GMD', 'name': 'Công ty CP Cảng Gemalink', 'sector': 'Transportation', 'exchange': 'HOSE'},
+            {'symbol': 'VSC', 'name': 'Tổng Công ty Vận tải Sài Gòn', 'sector': 'Transportation', 'exchange': 'HOSE'},
+            {'symbol': 'TCO', 'name': 'Công ty CP Vận tải Transimex', 'sector': 'Transportation', 'exchange': 'HOSE'},
             
-            # Healthcare & Pharma
+            # Healthcare & Pharma (4 stocks)
             {'symbol': 'DHG', 'name': 'Công ty CP Dược Hậu Giang', 'sector': 'Healthcare', 'exchange': 'HOSE'},
             {'symbol': 'IMP', 'name': 'Công ty CP Dược phẩm Imexpharm', 'sector': 'Healthcare', 'exchange': 'HOSE'},
+            {'symbol': 'DBD', 'name': 'Công ty CP Dược Đồng Bình Dương', 'sector': 'Healthcare', 'exchange': 'HOSE'},
+            {'symbol': 'PME', 'name': 'Công ty CP Dược phẩm Mediplantex', 'sector': 'Healthcare', 'exchange': 'HOSE'},
+            
+            # Food & Beverage (4 stocks)
+            {'symbol': 'VHC', 'name': 'Công ty CP Vinhomes', 'sector': 'Food & Beverage', 'exchange': 'HOSE'},
+            {'symbol': 'KDC', 'name': 'Công ty CP Kinh Đô', 'sector': 'Food & Beverage', 'exchange': 'HOSE'},
+            {'symbol': 'MCH', 'name': 'Công ty CP Hàng tiêu dùng Masan', 'sector': 'Food & Beverage', 'exchange': 'HOSE'},
+            {'symbol': 'QNS', 'name': 'Công ty CP Đường Quảng Ngãi', 'sector': 'Food & Beverage', 'exchange': 'HOSE'},
+            
+            # Textiles & Apparel (3 stocks)
+            {'symbol': 'VGT', 'name': 'Công ty CP Viglacera Tiền Hải', 'sector': 'Textiles', 'exchange': 'HOSE'},
+            {'symbol': 'STK', 'name': 'Công ty CP Sợi Thế Kỷ', 'sector': 'Textiles', 'exchange': 'HOSE'},
+            {'symbol': 'MSH', 'name': 'Công ty CP Thời trang và Mỹ phẩm Masan', 'sector': 'Textiles', 'exchange': 'HOSE'},
+            
+            # Agriculture & Fisheries (3 stocks)
+            {'symbol': 'BAF', 'name': 'Công ty CP BAFCO', 'sector': 'Agriculture', 'exchange': 'HOSE'},
+            {'symbol': 'VNF', 'name': 'Công ty CP Vinafor', 'sector': 'Agriculture', 'exchange': 'HOSE'},
+            {'symbol': 'FMC', 'name': 'Công ty CP Thực phẩm Sao Ta', 'sector': 'Agriculture', 'exchange': 'HOSE'},
+            
+            # Mining & Resources (2 stocks)
+            {'symbol': 'KSB', 'name': 'Công ty CP Khoáng sản Bình Định', 'sector': 'Mining', 'exchange': 'HOSE'},
+            {'symbol': 'NBC', 'name': 'Công ty CP Than Núi Béo', 'sector': 'Mining', 'exchange': 'HOSE'},
+            # Telecommunications (3 stocks)
+
+            {'symbol': 'VGI', 'name': 'Tập đoàn Công nghệ Viễn thông Quân đội – Viettel', 'sector': 'Telecommunications', 'exchange': 'HOSE'},
+            {'symbol': 'SGT', 'name': 'Công ty CP Công nghệ Viễn thông Sài Gòn', 'sector': 'Telecommunications', 'exchange': 'HOSE'},
+            {'symbol': 'SPT', 'name': 'Công ty CP Dịch vụ Bưu chính Viễn thông Sài Gòn', 'sector': 'Telecommunications', 'exchange': 'HOSE'},
+            # Education (2 stocks)
+            {'symbol': 'GDT', 'name': 'Công ty CP Giáo dục và Đào tạo GDT', 'sector': 'Education', 'exchange': 'HOSE'},
+            {'symbol': 'SED', 'name': 'Công ty CP Giáo dục Sách thiết bị TP.HCM', 'sector': 'Education', 'exchange': 'HOSE'},
         ]
     
     def _get_fallback_market_news(self) -> Dict[str, Any]:

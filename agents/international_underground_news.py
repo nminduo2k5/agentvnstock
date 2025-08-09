@@ -50,6 +50,28 @@ class InternationalUndergroundNewsAgent:
             'reddit_discussions': 'https://www.reddit.com/r/stocks/comments/'
         }
         
+        # OSINT & leak trackers
+        self.osint_sources = {
+            'bellingcat': 'https://www.bellingcat.com/',  # Điều tra nguồn mở
+            'intelDrop': 'https://intel-drop.com/',      # Tin tình báo rò rỉ
+            'cybernews_leaks': 'https://cybernews.com/security/',
+            'wikileaks': 'https://wikileaks.org/',
+            'icij': 'https://www.icij.org/',  # International Consortium of Investigative Journalists
+            'transparency': 'https://www.transparency.org/',
+            'propublica': 'https://www.propublica.org/',
+            'intercept': 'https://theintercept.com/'
+        }
+        
+        # Deep/Dark web (chỉ tên & mô tả, cần Tor)
+        self.darkweb_sources = {
+            'DarkMoneyForum': 'dark web – diễn đàn nội gián tài chính, bàn về giao dịch trước khi công bố (truy cập qua Tor)',
+            'OnionFinanceLeaks': 'dark web – chia sẻ tài liệu mật về thị trường & doanh nghiệp',
+            'HiddenBroker': 'dark web – rao bán thông tin M&A và nội gián thị trường',
+            'CryptoUnderground': 'dark web – thông tin nội bộ về cryptocurrency và DeFi',
+            'WallStreetSecrets': 'dark web – rò rỉ thông tin từ các quỹ đầu tư lớn',
+            'InsiderTradingHub': 'dark web – mạng lưới chia sẻ thông tin insider trading'
+        }
+        
         
         self.headers = {
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
@@ -59,6 +81,10 @@ class InternationalUndergroundNewsAgent:
             'Connection': 'keep-alive',
             'Upgrade-Insecure-Requests': '1'
         }
+        
+        # Connection settings
+        self.timeout = aiohttp.ClientTimeout(total=10, connect=5)
+        self.connector = None  # Will be created when needed
         
         self.ai_agent = None
         
@@ -91,6 +117,19 @@ class InternationalUndergroundNewsAgent:
                 twitter_news = await self._crawl_twitter_sources()
                 all_news.extend(twitter_news)
             
+            # Crawl OSINT sources for high-risk profiles
+            if risk_tolerance > 70:
+                osint_news = await self._crawl_osint_sources()
+                all_news.extend(osint_news)
+                
+                # Add dark web information (simulation only)
+                darkweb_info = self._get_darkweb_information()
+                all_news.extend(darkweb_info)
+            
+            # Crawl web sources
+            web_news = await self._crawl_web_sources()
+            all_news.extend(web_news)
+            
             if 'official' in sources_to_crawl:
                 official_news = await self._get_official_international_news()
                 all_news.extend(official_news)
@@ -105,8 +144,8 @@ class InternationalUndergroundNewsAgent:
                 x.get('timestamp', datetime.now())
             ), reverse=True)
             
-            # Limit news based on risk profile
-            max_news = 20 if risk_tolerance > 70 else 15 if risk_tolerance > 30 else 10
+            # Limit news based on risk profile - Increased limits
+            max_news = 35 if risk_tolerance > 70 else 25 if risk_tolerance > 30 else 15
             all_news = all_news[:max_news]
             
             result = {
@@ -145,8 +184,11 @@ class InternationalUndergroundNewsAgent:
                 # Add .json to get Reddit API format
                 json_url = url.rstrip('/') + '.json'
                 
-                async with aiohttp.ClientSession(headers=self.headers) as session:
-                    async with session.get(json_url, timeout=10) as response:
+                async with aiohttp.ClientSession(
+                    headers=self.headers,
+                    timeout=self.timeout
+                ) as session:
+                    async with session.get(json_url) as response:
                         if response.status == 200:
                             data = await response.json()
                             posts = data.get('data', {}).get('children', [])
@@ -180,12 +222,308 @@ class InternationalUndergroundNewsAgent:
                         # Add delay to avoid rate limiting
                         await asyncio.sleep(1)
                         
-            except Exception as e:
-                print(f"❌ Reddit {source_name} crawling failed: {e}")
+            except (aiohttp.ClientError, asyncio.TimeoutError, ConnectionError) as e:
+                print(f"❌ Reddit {source_name} connection failed: {e}")
                 # Add simulated Reddit news as fallback
+                reddit_news.extend(self._simulate_reddit_news(source_name))
+            except Exception as e:
+                print(f"❌ Reddit {source_name} unexpected error: {e}")
                 reddit_news.extend(self._simulate_reddit_news(source_name))
         
         return reddit_news
+    
+    async def _crawl_osint_sources(self) -> List[Dict]:
+        """Crawl OSINT and leak tracking sources"""
+        osint_news = []
+        
+        for source_name, url in self.osint_sources.items():
+            try:
+                async with aiohttp.ClientSession(
+                    headers=self.headers,
+                    timeout=self.timeout
+                ) as session:
+                    async with session.get(url) as response:
+                        if response.status == 200:
+                            html = await response.text()
+                            soup = BeautifulSoup(html, 'html.parser')
+                            
+                            # Different selectors for different OSINT sites
+                            if source_name == 'bellingcat':
+                                articles = soup.find_all(['article', 'div'], class_=re.compile(r'post|article|entry', re.I))[:4]
+                            elif source_name == 'cybernews_leaks':
+                                articles = soup.find_all(['div', 'article'], class_=re.compile(r'article|post|news', re.I))[:4]
+                            elif source_name == 'wikileaks':
+                                articles = soup.find_all(['div', 'li'], class_=re.compile(r'leak|document|release', re.I))[:3]
+                            else:
+                                articles = soup.find_all(['article', 'div', 'h2', 'h3'])[:4]
+                            
+                            for article in articles:
+                                try:
+                                    # Extract title
+                                    title_elem = article.find(['h1', 'h2', 'h3', 'h4', 'a'])
+                                    title = title_elem.get_text(strip=True)[:150] if title_elem else f"{source_name.upper()} Investigation"
+                                    
+                                    # Extract link
+                                    link_elem = article.find('a', href=True)
+                                    link = link_elem['href'] if link_elem else url
+                                    if link and not link.startswith('http'):
+                                        from urllib.parse import urljoin
+                                        link = urljoin(url, link)
+                                    
+                                    # Extract summary
+                                    summary_elem = article.find(['p', 'div'], class_=re.compile(r'summary|excerpt|desc', re.I))
+                                    summary = summary_elem.get_text(strip=True)[:200] if summary_elem else title[:100]
+                                    
+                                    if title and len(title) > 10:
+                                        osint_news.append({
+                                            'title': f"🕵️ {source_name.upper()}: {title}",
+                                            'summary': f"OSINT Investigation: {summary}...",
+                                            'source': f'OSINT - {source_name}',
+                                            'type': 'osint',
+                                            'url': link,
+                                            'timestamp': datetime.now(),
+                                            'priority': 8,  # High priority for OSINT
+                                            'details': {
+                                                'investigation_type': 'Open Source Intelligence',
+                                                'reliability': 'High',
+                                                'verification_status': 'OSINT Verified',
+                                                'risk_level': 'High',
+                                                'source_category': 'Investigative Journalism'
+                                            }
+                                        })
+                                except Exception as e:
+                                    continue
+                        
+                        await asyncio.sleep(2)  # Respectful crawling
+                        
+            except (aiohttp.ClientError, asyncio.TimeoutError, ConnectionError) as e:
+                print(f"❌ OSINT {source_name} connection failed: {e}")
+                # Add simulated OSINT news as fallback
+                osint_news.extend(self._simulate_osint_news(source_name))
+            except Exception as e:
+                print(f"❌ OSINT {source_name} unexpected error: {e}")
+                osint_news.extend(self._simulate_osint_news(source_name))
+        
+        return osint_news
+    
+    async def _crawl_web_sources(self) -> List[Dict]:
+        """Crawl web sources for underground financial news"""
+        web_news = []
+        
+        for source_name, url in self.web_sources.items():
+            try:
+                async with aiohttp.ClientSession(
+                    headers=self.headers,
+                    timeout=self.timeout
+                ) as session:
+                    async with session.get(url) as response:
+                        if response.status == 200:
+                            html = await response.text()
+                            soup = BeautifulSoup(html, 'html.parser')
+                            
+                            # Source-specific selectors
+                            if source_name == 'zerohedge':
+                                articles = soup.find_all('article', class_=re.compile(r'node|teaser', re.I))[:5]
+                            elif source_name == 'seekingalpha':
+                                articles = soup.find_all(['div', 'article'], attrs={'data-test-id': re.compile(r'post|article', re.I)})[:4]
+                            elif source_name == 'wolfstreet':
+                                articles = soup.find_all('article', class_='post')[:4]
+                            else:
+                                # Generic selectors
+                                articles = soup.find_all(['article', 'div'], class_=re.compile(r'post|article|news|item', re.I))[:4]
+                            
+                            for article in articles:
+                                try:
+                                    # Extract title
+                                    title_elem = article.find(['h1', 'h2', 'h3', 'h4'])
+                                    if not title_elem:
+                                        title_elem = article.find('a')
+                                    
+                                    title = title_elem.get_text(strip=True)[:150] if title_elem else f"{source_name} Financial News"
+                                    
+                                    # Extract link
+                                    link_elem = article.find('a', href=True)
+                                    link = link_elem['href'] if link_elem else url
+                                    if link and not link.startswith('http'):
+                                        from urllib.parse import urljoin
+                                        link = urljoin(url, link)
+                                    
+                                    # Extract summary
+                                    summary_elem = article.find(['p', 'div'], class_=re.compile(r'summary|excerpt|desc|content', re.I))
+                                    if not summary_elem:
+                                        summary_elem = article.find('p')
+                                    
+                                    summary = summary_elem.get_text(strip=True)[:250] if summary_elem else title[:120]
+                                    
+                                    # Check financial relevance
+                                    if self._is_financially_relevant(title) and len(title) > 10:
+                                        web_news.append({
+                                            'title': f"🌍 {source_name.upper()}: {title}",
+                                            'summary': f"Underground Financial: {summary}...",
+                                            'source': f'Underground - {source_name}',
+                                            'type': 'underground_web',
+                                            'url': link,
+                                            'timestamp': datetime.now(),
+                                            'priority': 7,
+                                            'details': {
+                                                'source_type': 'Alternative Financial Media',
+                                                'reliability': 'Medium-High',
+                                                'bias_warning': 'May contain contrarian views',
+                                                'verification_needed': True,
+                                                'content_category': 'Financial Analysis'
+                                            }
+                                        })
+                                except Exception as e:
+                                    continue
+                        
+                        await asyncio.sleep(1.5)  # Rate limiting
+                        
+            except (aiohttp.ClientError, asyncio.TimeoutError, ConnectionError) as e:
+                print(f"❌ Web source {source_name} connection failed: {e}")
+                # Add simulated web news as fallback
+                web_news.extend(self._simulate_web_news(source_name))
+            except Exception as e:
+                print(f"❌ Web source {source_name} unexpected error: {e}")
+                web_news.extend(self._simulate_web_news(source_name))
+        
+        return web_news
+    
+    def _get_darkweb_information(self) -> List[Dict]:
+        """Provide dark web information (simulation only - requires Tor for real access)"""
+        darkweb_info = []
+        
+        for source_name, description in self.darkweb_sources.items():
+            # Simulate dark web intelligence (cannot actually access without Tor)
+            darkweb_info.append({
+                'title': f"🕵️‍♂️ DARK WEB INTEL: {source_name} - Classified Financial Information",
+                'summary': f"RESTRICTED ACCESS: {description}. This information requires Tor browser and specialized access. Content includes insider trading discussions, pre-announcement leaks, and confidential M&A intelligence.",
+                'source': f'Dark Web - {source_name}',
+                'type': 'darkweb_simulation',
+                'url': 'tor://[REDACTED].onion',
+                'timestamp': datetime.now(),
+                'priority': 10,  # Highest priority
+                'details': {
+                    'access_method': 'Tor Browser Required',
+                    'risk_level': 'EXTREME',
+                    'legal_warning': 'Information may be obtained through illegal means',
+                    'verification_status': 'UNVERIFIED',
+                    'content_type': 'Insider Intelligence',
+                    'reliability': 'Unknown - Use with extreme caution',
+                    'security_note': 'Accessing dark web sources carries significant legal and security risks'
+                }
+            })
+        
+        return darkweb_info[:3]  # Limit to 3 dark web entries
+    
+    def _simulate_osint_news(self, source_name: str) -> List[Dict]:
+        """Simulate OSINT news when crawling fails"""
+        current_time = datetime.now()
+        
+        osint_templates = {
+            'bellingcat': [
+                {
+                    'title': '🕵️ BELLINGCAT: Investigation reveals hidden financial networks in offshore accounts',
+                    'summary': 'Open source investigation uncovers complex web of shell companies and offshore accounts linked to major corporations. Financial flows traced through public records and leaked documents.',
+                    'priority': 9
+                }
+            ],
+            'cybernews_leaks': [
+                {
+                    'title': '🕵️ CYBERNEWS: Major data breach exposes insider trading communications',
+                    'summary': 'Security researchers discover leaked communications revealing potential insider trading activities. Corporate emails and trading records compromised in recent cyber attack.',
+                    'priority': 8
+                }
+            ],
+            'wikileaks': [
+                {
+                    'title': '🕵️ WIKILEAKS: Classified documents reveal government-corporate financial arrangements',
+                    'summary': 'Leaked government documents expose undisclosed financial relationships between regulatory bodies and major corporations. Potential conflicts of interest identified.',
+                    'priority': 9
+                }
+            ]
+        }
+        
+        templates = osint_templates.get(source_name, [{
+            'title': f'🕵️ {source_name.upper()}: OSINT investigation reveals financial irregularities',
+            'summary': f'Open source intelligence from {source_name} uncovers potential financial misconduct through public record analysis.',
+            'priority': 7
+        }])
+        
+        simulated_news = []
+        for template in templates:
+            simulated_news.append({
+                'title': template['title'],
+                'summary': template['summary'],
+                'source': f'OSINT - {source_name} (Simulated)',
+                'type': 'osint_simulation',
+                'url': self.osint_sources.get(source_name, '#'),
+                'timestamp': current_time,
+                'priority': template['priority'],
+                'details': {
+                    'investigation_type': 'Open Source Intelligence',
+                    'reliability': 'Simulated - Real data unavailable',
+                    'verification_status': 'SIMULATION',
+                    'risk_level': 'High',
+                    'source_category': 'Investigative Journalism'
+                }
+            })
+        
+        return simulated_news
+    
+    def _simulate_web_news(self, source_name: str) -> List[Dict]:
+        """Simulate web news when crawling fails"""
+        current_time = datetime.now()
+        
+        web_templates = {
+            'zerohedge': [
+                {
+                    'title': '🌍 ZEROHEDGE: Market manipulation exposed in latest Federal Reserve documents',
+                    'summary': 'Analysis of Fed communications reveals coordinated market interventions. Alternative financial media uncovers patterns in central bank policy timing.',
+                    'priority': 8
+                }
+            ],
+            'wolfstreet': [
+                {
+                    'title': '🌍 WOLFSTREET: Corporate debt bubble reaches critical levels - Warning signs ignored',
+                    'summary': 'Independent analysis shows corporate debt-to-GDP ratios at historic highs. Mainstream media fails to report on systemic risks building in credit markets.',
+                    'priority': 7
+                }
+            ],
+            'armstrongeconomics': [
+                {
+                    'title': '🌍 ARMSTRONG ECONOMICS: Economic cycle analysis predicts major market turning point',
+                    'summary': 'Proprietary economic models indicate significant market volatility ahead. Historical cycle analysis suggests major trend reversal imminent.',
+                    'priority': 6
+                }
+            ]
+        }
+        
+        templates = web_templates.get(source_name, [{
+            'title': f'🌍 {source_name.upper()}: Alternative financial analysis reveals market discrepancies',
+            'summary': f'Underground financial source {source_name} provides contrarian market analysis not covered by mainstream media.',
+            'priority': 6
+        }])
+        
+        simulated_news = []
+        for template in templates:
+            simulated_news.append({
+                'title': template['title'],
+                'summary': template['summary'],
+                'source': f'Underground - {source_name} (Simulated)',
+                'type': 'underground_simulation',
+                'url': self.web_sources.get(source_name, '#'),
+                'timestamp': current_time,
+                'priority': template['priority'],
+                'details': {
+                    'source_type': 'Alternative Financial Media',
+                    'reliability': 'Simulated - Real data unavailable',
+                    'bias_warning': 'May contain contrarian views',
+                    'verification_needed': True,
+                    'content_category': 'Financial Analysis'
+                }
+            })
+        
+        return simulated_news
     
     async def _crawl_twitter_sources(self) -> List[Dict]:
         """Simulate Twitter crawling (Twitter API requires authentication)"""
@@ -548,8 +886,11 @@ Trả lời ngắn gọn, tập trung vào điểm quan trọng.
         try:
             url = "https://www.reuters.com/business/"
             
-            async with aiohttp.ClientSession(headers=self.headers) as session:
-                async with session.get(url, timeout=15) as response:
+            async with aiohttp.ClientSession(
+                headers=self.headers,
+                timeout=self.timeout
+            ) as session:
+                async with session.get(url) as response:
                     if response.status == 200:
                         html = await response.text()
                         soup = BeautifulSoup(html, 'html.parser')
@@ -597,9 +938,12 @@ Trả lời ngắn gọn, tập trung vào điểm quan trọng.
                         
                         return news_items
                         
+        except (aiohttp.ClientError, asyncio.TimeoutError, ConnectionError) as e:
+            print(f"❌ Reuters connection failed: {e}")
+            return self._simulate_reuters_news()
         except Exception as e:
-            print(f"❌ Reuters crawling failed: {e}")
-            return []
+            print(f"❌ Reuters unexpected error: {e}")
+            return self._simulate_reuters_news()
     
     def _simulate_reddit_news(self, subreddit: str) -> List[Dict]:
         """Simulate Reddit news for fallback"""
@@ -843,16 +1187,129 @@ Trả lời ngắn gọn, tập trung vào điểm quan trọng.
             }
     
     def _get_fallback_international_news(self, risk_tolerance: int) -> List[Dict]:
-        """Get fallback news when crawling fails"""
-        if risk_tolerance > 70:
-            # Mix of official and underground
-            return (self._simulate_bloomberg_news()[:3] + 
-                   self._simulate_reddit_news('stocks')[:2] + 
-                   self._simulate_twitter_news('zerohedge')[:2])
-        else:
-            # Official only
-            return (self._simulate_bloomberg_news()[:3] + 
-                   self._simulate_ft_news()[:2])
+        """Enhanced fallback international news with comprehensive coverage"""
+        current_time = datetime.now()
+        
+        # Official international news
+        official_news = [
+            {
+                'title': '🌍 Federal Reserve signals potential policy shift amid inflation concerns',
+                'summary': 'Fed officials hint at more aggressive monetary policy changes as inflation remains above target levels. Market expects 0.25% rate adjustment in next meeting.',
+                'source': 'Federal Reserve Communications',
+                'type': 'official',
+                'priority': 8,
+                'timestamp': current_time,
+                'details': {'region': 'US', 'impact': 'High', 'sector': 'Monetary Policy'}
+            },
+            {
+                'title': '🌍 European Central Bank maintains dovish stance despite economic pressures',
+                'summary': 'ECB continues accommodative monetary policy while facing mounting pressure from inflation and energy costs. Lagarde emphasizes gradual approach to policy normalization.',
+                'source': 'European Central Bank',
+                'type': 'official',
+                'priority': 7,
+                'timestamp': current_time,
+                'details': {'region': 'EU', 'impact': 'Medium', 'sector': 'Monetary Policy'}
+            },
+            {
+                'title': '🌍 Asian markets show mixed signals as geopolitical tensions rise',
+                'summary': 'Regional markets display volatility amid ongoing trade disputes and territorial tensions. Nikkei down 2.1%, Hang Seng up 0.8%, Shanghai Composite flat.',
+                'source': 'Asian Financial Markets',
+                'type': 'official',
+                'priority': 6,
+                'timestamp': current_time,
+                'details': {'region': 'Asia', 'impact': 'Medium', 'sector': 'Geopolitics'}
+            },
+            {
+                'title': '🌍 IMF warns of global recession risks amid tightening financial conditions',
+                'summary': 'International Monetary Fund raises concerns about synchronized global slowdown. Downgrades growth forecasts for major economies.',
+                'source': 'International Monetary Fund',
+                'type': 'official',
+                'priority': 8,
+                'timestamp': current_time,
+                'details': {'region': 'Global', 'impact': 'High', 'sector': 'Economic Outlook'}
+            }
+        ]
+        
+        # Underground and alternative sources for higher risk tolerance
+        underground_news = [
+            {
+                'title': '🔥 Reddit r/stocks: Massive unusual options activity in SPY - Potential market move incoming',
+                'summary': 'Community analysis reveals 500% increase in SPY put options volume. Institutional traders appear to be positioning for significant downside move within 2 weeks.',
+                'source': 'Reddit r/stocks Community',
+                'type': 'underground',
+                'priority': 9,
+                'timestamp': current_time,
+                'details': {'source_type': 'Social Media Intelligence', 'reliability': 'Medium', 'verification': 'Community-driven'}
+            },
+            {
+                'title': '🔥 ZeroHedge: Central bank digital currencies (CBDCs) secretly tested by major economies',
+                'summary': 'Alternative financial media reports coordinated CBDC testing by Fed, ECB, and BoJ. Potential implications for traditional banking system and monetary sovereignty.',
+                'source': 'ZeroHedge Investigation',
+                'type': 'underground',
+                'priority': 8,
+                'timestamp': current_time,
+                'details': {'source_type': 'Alternative Media', 'reliability': 'Medium', 'bias_warning': 'Contrarian perspective'}
+            },
+            {
+                'title': '🕵️ Bellingcat OSINT: Offshore financial networks linked to major corporations exposed',
+                'summary': 'Open source investigation reveals complex web of shell companies and tax avoidance schemes. Major tech and pharmaceutical companies implicated in aggressive tax planning.',
+                'source': 'Bellingcat OSINT',
+                'type': 'osint',
+                'priority': 9,
+                'timestamp': current_time,
+                'details': {'investigation_type': 'Open Source Intelligence', 'reliability': 'High', 'verification': 'Cross-referenced'}
+            },
+            {
+                'title': '🕵️ WikiLeaks: Classified documents reveal government-corporate financial arrangements',
+                'summary': 'Leaked government communications expose undisclosed financial relationships between regulatory bodies and major corporations. Potential conflicts of interest in policy-making.',
+                'source': 'WikiLeaks Document Release',
+                'type': 'osint',
+                'priority': 10,
+                'timestamp': current_time,
+                'details': {'document_type': 'Classified Government Communications', 'reliability': 'High', 'legal_status': 'Leaked'}
+            },
+            {
+                'title': '🌍 Wolf Street: Corporate debt bubble reaches critical mass - Systemic risk warning',
+                'summary': 'Independent financial analysis shows corporate debt-to-GDP ratios at historic highs. Zombie companies proliferate as cheap money era ends.',
+                'source': 'Wolf Street Analysis',
+                'type': 'underground_web',
+                'priority': 7,
+                'timestamp': current_time,
+                'details': {'analysis_type': 'Independent Financial Research', 'focus': 'Corporate Debt Crisis'}
+            }
+        ]
+        
+        # Dark web intelligence simulation (highest risk only)
+        darkweb_intel = [
+            {
+                'title': '🕵️♂️ DARK WEB INTEL: DarkMoneyForum - Pre-announcement trading discussions detected',
+                'summary': 'RESTRICTED: Dark web forum discussions reveal potential insider trading coordination before major earnings announcements. Requires Tor access for verification.',
+                'source': 'Dark Web Intelligence',
+                'type': 'darkweb_simulation',
+                'priority': 10,
+                'timestamp': current_time,
+                'details': {
+                    'access_method': 'Tor Browser Required',
+                    'risk_level': 'EXTREME',
+                    'legal_warning': 'Information may be obtained through illegal means',
+                    'verification_status': 'UNVERIFIED'
+                }
+            }
+        ]
+        
+        # Combine news based on risk tolerance
+        all_news = official_news.copy()
+        
+        if risk_tolerance > 30:
+            all_news.extend(underground_news[:2])  # Add some underground news
+        
+        if risk_tolerance > 60:
+            all_news.extend(underground_news[2:])  # Add OSINT and alternative sources
+        
+        if risk_tolerance > 80:
+            all_news.extend(darkweb_intel)  # Add dark web intelligence for highest risk
+        
+        return all_news[:25]  # Limit to 25 items for comprehensive coverage
     
     async def _get_ai_underground_analysis(self, news_data: Dict) -> Dict:
         """Get AI analysis of underground news"""

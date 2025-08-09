@@ -642,10 +642,65 @@ def display_risk_assessment(risk):
             - Theo dõi biến động thị trường
             """)
     
+    # Show risk-adjusted analysis using REAL sidebar data
+    with st.expander("🎯 Phân tích theo hồ sơ rủi ro", expanded=True):
+        # Get current data from sidebar (passed from main scope)
+        sidebar_risk_tolerance = risk_tolerance
+        sidebar_time_horizon = time_horizon  
+        sidebar_investment_amount = investment_amount
+        
+        # Calculate risk profile from sidebar data
+        if sidebar_risk_tolerance <= 30:
+            risk_profile = "Thận trọng"
+            max_position = 0.05  # 5%
+            stop_loss_pct = 5
+        elif sidebar_risk_tolerance <= 70:
+            risk_profile = "Cân bằng"
+            max_position = 0.10  # 10%
+            stop_loss_pct = 8
+        else:
+            risk_profile = "Mạo hiểm"
+            max_position = 0.20  # 20%
+            stop_loss_pct = 12
+        
+        # Calculate position sizing from sidebar data
+        max_investment = sidebar_investment_amount * max_position
+        current_price = risk.get('current_price', 50000)  # Get from risk data or default
+        recommended_shares = int(max_investment / current_price) if current_price > 0 else 0
+        actual_investment = recommended_shares * current_price
+        stop_loss_price = current_price * (1 - stop_loss_pct / 100)
+        take_profit_price = current_price * 1.15  # 15% target
+        
+        col1, col2, col3 = st.columns(3)
+        
+        with col1:
+            st.metric("Hồ sơ rủi ro", f"{risk_profile} ({sidebar_risk_tolerance}%)")
+            st.metric("Thời gian đầu tư", sidebar_time_horizon.split(' (')[0])
+            
+        with col2:
+            st.metric("Số cổ phiếu khuyến nghị", f"{recommended_shares:,}")
+            st.metric("Số tiền đầu tư", f"{sidebar_investment_amount:,.0f} VND")
+            
+        with col3:
+            st.metric("Stop Loss", f"{stop_loss_price:,.2f} VND")
+            st.metric("Take Profit", f"{take_profit_price:,.2f} VND")
+        
+        # Show personalized recommendations based on sidebar data
+        st.subheader("💡 Khuyến nghị cá nhân hóa:")
+        st.write(f"• Tỷ trọng tối đa: {max_position*100:.0f}% danh mục ({max_investment:,.2f} VND)")
+        st.write(f"• Stop-loss: {stop_loss_pct}% để kiểm soát rủi ro")
+        if sidebar_time_horizon.startswith('Dài hạn'):
+            st.write("• Phù hợp với chiến lược mua và giữ dài hạn")
+        elif sidebar_time_horizon.startswith('Ngắn hạn'):
+            st.write("• Theo dõi sát biến động giá để chốt lời/cắt lỗ")
+        else:
+            st.write("• Cân bằng giữa tăng trưởng và kiểm soát rủi ro")
+    
     # Show AI error if any
     if risk.get('ai_error'):
         st.warning(f"⚠️ AI không khả dụng: {risk.get('ai_error')}")
     
+
     # Show data source info
     data_source = risk.get('data_source', 'Unknown')
     if 'VCI_Real' in data_source:
@@ -754,7 +809,8 @@ def display_calendar_prediction(pred, target_date, days_ahead):
     col1, col2, col3, col4 = st.columns(4)
     
     with col1:
-        st.metric("Độ tin cậy", f"{confidence:.1f}%")
+        confidence_value = pred.get('lstm_confidence', confidence)
+        st.metric("Độ tin cậy", f"{confidence_value:.1f}%")
     with col2:
         change_amount = predicted_price - current_price
         st.metric("Thay đổi (VND)", f"{change_amount:+,.2f}")
@@ -1151,6 +1207,68 @@ def display_investment_analysis(inv):
             if enhanced_rec != recommendation:
                 st.info(f"🎯 Khuyến nghị AI nâng cao: {enhanced_rec}")
     
+
+    # Show risk-adjusted analysis using REAL sidebar data
+    with st.expander("🎯 Phân tích theo hồ sơ rủi ro", expanded=True):
+        # Get current data from sidebar (passed from main scope)
+        sidebar_risk_tolerance = risk_tolerance
+        sidebar_time_horizon = time_horizon  
+        sidebar_investment_amount = investment_amount
+        
+        # Calculate risk profile from sidebar data
+        if sidebar_risk_tolerance <= 30:
+            risk_profile = "Thận trọng"
+            max_position = 0.05  # 5%
+            stop_loss_pct = 5
+        elif sidebar_risk_tolerance <= 70:
+            risk_profile = "Cân bằng"
+            max_position = 0.10  # 10%
+            stop_loss_pct = 8
+        else:
+            risk_profile = "Mạo hiểm"
+            max_position = 0.20  # 20%
+            stop_loss_pct = 12
+        
+        # Calculate position sizing from sidebar data
+        max_investment = sidebar_investment_amount * max_position
+        current_price = inv_data.get('current_price', 50000)  # Get from investment data
+        recommended_shares = int(max_investment / current_price) if current_price > 0 else 0
+        actual_investment = recommended_shares * current_price
+        stop_loss_price = current_price * (1 - stop_loss_pct / 100)
+        take_profit_price = current_price * 1.15  # 15% target
+        
+        col1, col2, col3 = st.columns(3)
+        
+        with col1:
+            st.metric("Hồ sơ rủi ro", f"{risk_profile} ({sidebar_risk_tolerance}%)")
+            st.metric("Thời gian đầu tư", sidebar_time_horizon.split(' (')[0])
+            
+        with col2:
+            st.metric("Số cổ phiếu khuyến nghị", f"{recommended_shares:,}")
+            st.metric("Số tiền đầu tư", f"{sidebar_investment_amount:,.0f} VND")
+            
+        with col3:
+            st.metric("Stop Loss", f"{stop_loss_price:,.2f} VND")
+            st.metric("Take Profit", f"{take_profit_price:,.2f} VND")
+        
+        # Show personalized investment recommendations based on sidebar data
+        st.subheader("💡 Khuyến nghị đầu tư cá nhân hóa:")
+        st.write(f"• Tỷ trọng tối đa: {max_position*100:.0f}% danh mục ({max_investment:,.2f} VND)")
+        st.write(f"• Stop-loss: {stop_loss_pct}% để kiểm soát rủi ro")
+        if sidebar_time_horizon.startswith('Dài hạn'):
+            st.write("• Phù hợp với chiến lược mua và giữ dài hạn")
+        elif sidebar_time_horizon.startswith('Ngắn hạn'):
+            st.write("• Theo dõi sát biến động giá để chốt lời/cắt lỗ")
+        else:
+            st.write("• Cân bằng giữa tăng trưởng và kiểm soát rủi ro")
+        
+        # Show recommendation adjustment based on risk profile
+        original_rec = inv.get('recommendation', 'HOLD')
+        if sidebar_risk_tolerance <= 30 and original_rec in ['STRONG BUY', 'BUY']:
+            st.warning("⚠️ **Điều chỉnh cho hồ sơ thận trọng:** Khuyến nghị giảm xuống WEAK BUY hoặc HOLD")
+        elif sidebar_risk_tolerance >= 70 and original_rec in ['HOLD', 'WEAK BUY']:
+            st.info("🚀 **Điều chỉnh cho hồ sơ mạo hiểm:** Có thể cân nhắc tăng lên BUY")
+    
     # Show AI error if any
     if inv.get('ai_error'):
         st.warning(f"⚠️ AI không khả dụng: {inv.get('ai_error')}")
@@ -1543,7 +1661,12 @@ with tab1:
             with st.spinner("⚠️ Đang đánh giá rủi ro..."):
                 loop = asyncio.new_event_loop()
                 asyncio.set_event_loop(loop)
-                risk = loop.run_until_complete(asyncio.to_thread(main_agent.risk_expert.assess_risk, symbol))
+                # Pass sidebar parameters to risk assessment
+                time_horizon_clean = time_horizon.split(" (")[0] if "(" in time_horizon else time_horizon
+                risk = loop.run_until_complete(asyncio.to_thread(
+                    main_agent.risk_expert.assess_risk_enhanced,
+                    symbol, risk_tolerance, time_horizon_clean, investment_amount
+                ))
                 loop.close()
             display_risk_assessment(risk)
     elif invest_btn:
@@ -1551,7 +1674,12 @@ with tab1:
             with st.spinner("💼 Đang phân tích đầu tư..."):
                 loop = asyncio.new_event_loop()
                 asyncio.set_event_loop(loop)
-                inv = loop.run_until_complete(asyncio.to_thread(main_agent.investment_expert.analyze_stock, symbol))
+                # Pass sidebar parameters to investment analysis
+                time_horizon_clean = time_horizon.split(" (")[0] if "(" in time_horizon else time_horizon
+                inv = loop.run_until_complete(asyncio.to_thread(
+                    main_agent.investment_expert.analyze_stock_enhanced,
+                    symbol, risk_tolerance, time_horizon_clean, investment_amount
+                ))
                 loop.close()
             display_investment_analysis(inv)
     elif calendar_predict_btn:

@@ -19,8 +19,14 @@ class TickerNews:
         try:
             # Logic kiểm tra cổ phiếu VN đã được chuyển ra MainAgent.
             # Agent này giờ chỉ tập trung vào cổ phiếu quốc tế qua Yahoo Finance.
-            # Check if VN stock
-            vn_stocks = ['VCB', 'BID', 'CTG', 'TCB', 'ACB', 'VIC', 'VHM', 'VRE', 'DXG', 'MSN', 'MWG', 'VNM', 'SAB', 'HPG', 'GAS', 'PLX', 'FPT']
+            # Get all VN stocks from crewai_collector fallback
+            try:
+                from src.data.crewai_collector import CrewAIDataCollector
+                collector = CrewAIDataCollector()
+                vn_stocks = [stock['symbol'] for stock in collector._get_fallback_symbols()]
+            except:
+                # Fallback to basic list if import fails
+                vn_stocks = ['VCB', 'BID', 'CTG', 'TCB', 'ACB', 'VIC', 'VHM', 'VRE', 'DXG', 'MSN', 'MWG', 'VNM', 'SAB', 'HPG', 'GAS', 'PLX', 'FPT']
             
             if symbol.upper() in vn_stocks:
                 # Try crawling from CafeF and VietStock first
@@ -100,8 +106,16 @@ class TickerNews:
             }
         except Exception as e:
             # Fallback to mock news for VN stocks
-            if symbol.upper() in ['VCB', 'BID', 'CTG', 'TCB', 'ACB', 'VIC', 'VHM', 'VRE', 'DXG', 'MSN', 'MWG', 'VNM', 'SAB', 'HPG', 'GAS', 'PLX', 'FPT']:
-                return self._get_vn_mock_news(symbol, limit)
+            try:
+                from src.data.crewai_collector import CrewAIDataCollector
+                collector = CrewAIDataCollector()
+                vn_symbols = [stock['symbol'] for stock in collector._get_fallback_symbols()]
+                if symbol.upper() in vn_symbols:
+                    return self._get_vn_mock_news(symbol, limit)
+            except:
+                # Basic fallback check
+                if symbol.upper() in ['VCB', 'BID', 'CTG', 'TCB', 'ACB', 'VIC', 'VHM', 'VRE', 'DXG', 'MSN', 'MWG', 'VNM', 'SAB', 'HPG', 'GAS', 'PLX', 'FPT']:
+                    return self._get_vn_mock_news(symbol, limit)
             return {"error": str(e)}
     
     async def _crawl_vn_news(self, symbol: str, limit: int):
@@ -293,15 +307,22 @@ class TickerNews:
         """Mock VN news as fallback"""
         import random
         
-        company_names = {
-            'VCB': 'Vietcombank',
-            'BID': 'BIDV', 
-            'CTG': 'VietinBank',
-            'VIC': 'Vingroup',
-            'VHM': 'Vinhomes',
-            'HPG': 'Hòa Phát',
-            'FPT': 'FPT Corporation'
-        }
+        # Get company names from crewai_collector fallback
+        try:
+            from src.data.crewai_collector import CrewAIDataCollector
+            collector = CrewAIDataCollector()
+            fallback_stocks = collector._get_fallback_symbols()
+            company_names = {stock['symbol']: stock['name'] for stock in fallback_stocks}
+        except:
+            company_names = {
+                'VCB': 'Vietcombank',
+                'BID': 'BIDV', 
+                'CTG': 'VietinBank',
+                'VIC': 'Vingroup',
+                'VHM': 'Vinhomes',
+                'HPG': 'Hòa Phát',
+                'FPT': 'FPT Corporation'
+            }
         
         company_name = company_names.get(symbol.upper(), f'Công ty {symbol}')
         

@@ -30,6 +30,113 @@ class RiskExpert:
                 self._vn_api = None
         return self._vn_api
     
+    def assess_risk_enhanced(self, symbol: str, risk_tolerance: int = 50, time_horizon: str = "Trung hạn", investment_amount: int = 100000000):
+        """Enhanced risk assessment with investment profile parameters"""
+        try:
+            # Get base risk assessment
+            base_risk = self.assess_risk(symbol)
+            
+            if base_risk.get('error'):
+                return base_risk
+            
+            # Adjust risk assessment based on investment profile
+            adjusted_risk = self._adjust_risk_for_profile(base_risk, risk_tolerance, time_horizon, investment_amount)
+            
+            # Add investment profile context
+            adjusted_risk['investment_profile'] = {
+                'risk_tolerance': risk_tolerance,
+                'time_horizon': time_horizon,
+                'investment_amount': investment_amount,
+                'risk_profile': self._get_risk_profile_name(risk_tolerance)
+            }
+            
+            return adjusted_risk
+            
+        except Exception as e:
+            return {'error': f'Enhanced risk assessment failed: {str(e)}'}
+    
+    def _adjust_risk_for_profile(self, base_risk: dict, risk_tolerance: int, time_horizon: str, investment_amount: int):
+        """Adjust risk assessment based on investment profile"""
+        adjusted = base_risk.copy()
+        
+        # Adjust risk level based on user's risk tolerance
+        base_risk_level = base_risk.get('risk_level', 'MEDIUM')
+        
+        if risk_tolerance <= 30:  # Conservative
+            # Conservative investors should see higher risk warnings
+            if base_risk_level == 'MEDIUM':
+                adjusted['risk_level'] = 'HIGH'
+                adjusted['profile_adjustment'] = 'Risk increased for conservative profile'
+            elif base_risk_level == 'LOW':
+                adjusted['risk_level'] = 'MEDIUM'
+                adjusted['profile_adjustment'] = 'Risk adjusted for conservative profile'
+        elif risk_tolerance >= 70:  # Aggressive
+            # Aggressive investors can handle more risk
+            if base_risk_level == 'HIGH':
+                adjusted['risk_level'] = 'MEDIUM'
+                adjusted['profile_adjustment'] = 'Risk reduced for aggressive profile'
+            elif base_risk_level == 'MEDIUM':
+                adjusted['risk_level'] = 'LOW'
+                adjusted['profile_adjustment'] = 'Risk reduced for aggressive profile'
+        
+        # Adjust position sizing recommendations
+        max_position = self._calculate_max_position(risk_tolerance, investment_amount)
+        stop_loss_pct = self._calculate_stop_loss(risk_tolerance, time_horizon)
+        
+        adjusted['position_recommendations'] = {
+            'max_position_pct': max_position * 100,
+            'max_investment_amount': investment_amount * max_position,
+            'stop_loss_pct': stop_loss_pct,
+            'time_horizon_days': self._get_time_horizon_days(time_horizon)
+        }
+        
+        return adjusted
+    
+    def _get_risk_profile_name(self, risk_tolerance: int) -> str:
+        """Get risk profile name from tolerance level"""
+        if risk_tolerance <= 30:
+            return "Thận trọng"
+        elif risk_tolerance <= 70:
+            return "Cân bằng"
+        else:
+            return "Mạo hiểm"
+    
+    def _calculate_max_position(self, risk_tolerance: int, investment_amount: int) -> float:
+        """Calculate maximum position size based on risk tolerance"""
+        if risk_tolerance <= 30:
+            return 0.05  # 5% max
+        elif risk_tolerance <= 70:
+            return 0.10  # 10% max
+        else:
+            return 0.20  # 20% max
+    
+    def _calculate_stop_loss(self, risk_tolerance: int, time_horizon: str) -> float:
+        """Calculate stop loss percentage"""
+        base_stop_loss = 10  # Base 10%
+        
+        # Adjust for risk tolerance
+        if risk_tolerance <= 30:
+            base_stop_loss = 5  # Conservative: 5%
+        elif risk_tolerance >= 70:
+            base_stop_loss = 15  # Aggressive: 15%
+        
+        # Adjust for time horizon
+        if "Ngắn hạn" in time_horizon:
+            base_stop_loss *= 0.8  # Tighter stop loss for short term
+        elif "Dài hạn" in time_horizon:
+            base_stop_loss *= 1.5  # Wider stop loss for long term
+        
+        return base_stop_loss
+    
+    def _get_time_horizon_days(self, time_horizon: str) -> int:
+        """Convert time horizon to days"""
+        if "Ngắn hạn" in time_horizon:
+            return 90
+        elif "Dài hạn" in time_horizon:
+            return 365
+        else:
+            return 180
+    
     def assess_risk(self, symbol: str):
         try:
             # Get VN API instance
@@ -390,9 +497,21 @@ class RiskExpert:
     def _get_ai_risk_analysis(self, symbol: str, base_analysis: dict):
         """Get AI-enhanced risk analysis with REAL adjustments"""
         try:
-            # Prepare context for AI analysis with advice request
+            # Get investment profile data if available
+            investment_profile = base_analysis.get('investment_profile', {})
+            risk_tolerance = investment_profile.get('risk_tolerance', 50)
+            time_horizon = investment_profile.get('time_horizon', 'Trung hạn')
+            investment_amount = investment_profile.get('investment_amount', 100000000)
+            risk_profile = investment_profile.get('risk_profile', 'Cân bằng')
+            
+            # Prepare context for AI analysis with investment profile
             context = f"""
-Bạn là chuyên gia quản lý rủi ro. Hãy phân tích rủi ro cổ phiếu {symbol}:
+Bạn là chuyên gia quản lý rủi ro. Hãy phân tích rủi ro cổ phiếu {symbol} dựa trên hồ sơ đầu tư:
+
+HỒ SƠ ĐẦU TƯ:
+- Hồ sơ rủi ro: {risk_profile} ({risk_tolerance}%)
+- Thời gian đầu tư: {time_horizon}
+- Số tiền đầu tư: {investment_amount:,} VND
 
 DỮ LIỆU RỦI RO:
 - Mức rủi ro: {base_analysis.get('risk_level', 'MEDIUM')}
@@ -402,15 +521,16 @@ DỮ LIỆU RỦI RO:
 - VaR 95%: {base_analysis.get('var_95', 8)}%
 - Risk Score: {base_analysis.get('risk_score', 5)}/10
 
-YÊU CẦU:
-1. Đưa ra lời khuyên quản lý rủi ro cụ thể
-2. Giải thích cách kiểm soát rủi ro
-3. Khuyến nghị về tỷ trọng đầu tư và stop-loss
+YÊU CẦU DỰA TRÊN HỒ SƠ:
+1. Đánh giá rủi ro phù hợp với hồ sơ {risk_profile}
+2. Khuyến nghị tỷ trọng và stop-loss cho {time_horizon}
+3. Cách quản lý rủi ro với số tiền {investment_amount:,} VND
+4. Lời khuyên cụ thể cho nhà đầu tư {risk_profile}
 
 Trả lời ngắn gọn, thực tế cho nhà đầu tư Việt Nam.
 
-ADVICE: [lời khuyên quản lý rủi ro]
-REASONING: [lý do và cách thực hiện]
+ADVICE: [lời khuyên quản lý rủi ro dựa trên hồ sơ]
+REASONING: [lý do và cách thực hiện phù hợp với hồ sơ]
 """
             
             # Get AI analysis

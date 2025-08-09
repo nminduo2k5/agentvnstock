@@ -782,6 +782,97 @@ class InvestmentExpert:
                 'reason': f'Điểm số {score}/100 - Khuyến nghị bán, rủi ro cao'
             }
     
+    def analyze_stock_enhanced(self, symbol: str, risk_tolerance: int = 50, time_horizon: str = "Trung hạn", investment_amount: int = 100000000) -> Dict[str, Any]:
+        """Enhanced investment analysis with investment profile parameters"""
+        try:
+            # Get base analysis
+            base_analysis = self.analyze_stock(symbol)
+            
+            if base_analysis.get('error'):
+                return base_analysis
+            
+            # Adjust analysis based on investment profile
+            adjusted_analysis = self._adjust_analysis_for_profile(base_analysis, risk_tolerance, time_horizon, investment_amount)
+            
+            # Add investment profile context
+            adjusted_analysis['investment_profile'] = {
+                'risk_tolerance': risk_tolerance,
+                'time_horizon': time_horizon,
+                'investment_amount': investment_amount,
+                'risk_profile': self._get_risk_profile_name(risk_tolerance)
+            }
+            
+            return adjusted_analysis
+            
+        except Exception as e:
+            return {'error': f'Enhanced investment analysis failed: {str(e)}'}
+    
+    def _adjust_analysis_for_profile(self, base_analysis: dict, risk_tolerance: int, time_horizon: str, investment_amount: int):
+        """Adjust investment analysis based on investment profile"""
+        adjusted = base_analysis.copy()
+        
+        # Adjust recommendation based on risk tolerance and time horizon
+        base_rec = base_analysis.get('recommendation', 'HOLD')
+        base_score = base_analysis.get('score', 50)
+        
+        # Conservative investors - more cautious recommendations
+        if risk_tolerance <= 30:
+            if base_rec in ['STRONG BUY', 'BUY'] and base_score < 75:
+                adjusted['recommendation'] = 'WEAK BUY'
+                adjusted['profile_adjustment'] = 'Recommendation adjusted for conservative profile'
+            elif base_rec == 'WEAK BUY' and base_score < 65:
+                adjusted['recommendation'] = 'HOLD'
+                adjusted['profile_adjustment'] = 'Recommendation adjusted for conservative profile'
+        
+        # Aggressive investors - more aggressive recommendations
+        elif risk_tolerance >= 70:
+            if base_rec == 'WEAK BUY' and base_score > 60:
+                adjusted['recommendation'] = 'BUY'
+                adjusted['profile_adjustment'] = 'Recommendation adjusted for aggressive profile'
+            elif base_rec == 'HOLD' and base_score > 55:
+                adjusted['recommendation'] = 'WEAK BUY'
+                adjusted['profile_adjustment'] = 'Recommendation adjusted for aggressive profile'
+        
+        # Calculate position sizing
+        max_position = self._calculate_max_position(risk_tolerance)
+        recommended_shares = int((investment_amount * max_position) / base_analysis.get('analysis', {}).get('detailed_metrics', {}).get('current_price', 50000))
+        
+        adjusted['position_recommendations'] = {
+            'max_position_pct': max_position * 100,
+            'recommended_shares': recommended_shares,
+            'recommended_investment': recommended_shares * base_analysis.get('analysis', {}).get('detailed_metrics', {}).get('current_price', 50000),
+            'time_horizon_days': self._get_time_horizon_days(time_horizon)
+        }
+        
+        return adjusted
+    
+    def _get_risk_profile_name(self, risk_tolerance: int) -> str:
+        """Get risk profile name from tolerance level"""
+        if risk_tolerance <= 30:
+            return "Thận trọng"
+        elif risk_tolerance <= 70:
+            return "Cân bằng"
+        else:
+            return "Mạo hiểm"
+    
+    def _calculate_max_position(self, risk_tolerance: int) -> float:
+        """Calculate maximum position size based on risk tolerance"""
+        if risk_tolerance <= 30:
+            return 0.05  # 5% max
+        elif risk_tolerance <= 70:
+            return 0.10  # 10% max
+        else:
+            return 0.20  # 20% max
+    
+    def _get_time_horizon_days(self, time_horizon: str) -> int:
+        """Convert time horizon to days"""
+        if "Ngắn hạn" in time_horizon:
+            return 90
+        elif "Dài hạn" in time_horizon:
+            return 365
+        else:
+            return 180
+    
     def analyze_stock(self, symbol: str) -> Dict[str, Any]:
         """
         Main method to analyze stock with investment recommendation
@@ -1149,8 +1240,20 @@ class InvestmentExpert:
             technical = analysis_details.get('technical', {})
             valuation = analysis_details.get('valuation', {})
             
+            # Get investment profile data if available
+            investment_profile = base_analysis.get('investment_profile', {})
+            risk_tolerance = investment_profile.get('risk_tolerance', 50)
+            time_horizon = investment_profile.get('time_horizon', 'Trung hạn')
+            investment_amount = investment_profile.get('investment_amount', 100000000)
+            risk_profile = investment_profile.get('risk_profile', 'Cân bằng')
+            
             context = f"""
-Bạn là chuyên gia đầu tư. Hãy phân tích cổ phiếu {symbol}:
+Bạn là chuyên gia đầu tư. Hãy phân tích cổ phiếu {symbol} dựa trên hồ sơ đầu tư:
+
+HỒ SƠ ĐẦU TƯ:
+- Hồ sơ rủi ro: {risk_profile} ({risk_tolerance}%)
+- Thời gian đầu tư: {time_horizon}
+- Số tiền đầu tư: {investment_amount:,} VND
 
 PHÂN TÍCH HIỆN TẠI:
 - Khuyến nghị: {base_analysis.get('recommendation', 'HOLD')}
@@ -1160,15 +1263,16 @@ PHÂN TÍCH HIỆN TẠI:
 - Điểm kỹ thuật: {technical.get('total_score', 50)}/100
 - Điểm định giá: {valuation.get('total_score', 50)}/100
 
-YÊU CẦU:
-1. Đưa ra lời khuyên đầu tư cụ thể (mua/bán/giữ)
-2. Giải thích lý do dựa trên phân tích
-3. Đưa ra hướng dẫn thực tế
+YÊU CẦU DỰA TRÊN HỒ SƠ:
+1. Điều chỉnh khuyến nghị phù hợp với hồ sơ {risk_profile}
+2. Tính toán tỷ trọng đầu tư cho {time_horizon}
+3. Khuyến nghị cụ thể với số tiền {investment_amount:,} VND
+4. Chiến lược phù hợp với nhà đầu tư {risk_profile}
 
 Trả lời ngắn gọn, thực tế cho nhà đầu tư Việt Nam.
 
-ADVICE: [lời khuyên đầu tư cụ thể]
-REASONING: [lý do và hướng dẫn]
+ADVICE: [lời khuyên đầu tư dựa trên hồ sơ]
+REASONING: [lý do và chiến lược phù hợp với hồ sơ]
 """
             
             ai_result = self.ai_agent.generate_with_fallback(context, 'investment_analysis', max_tokens=500)

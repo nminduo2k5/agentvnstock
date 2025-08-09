@@ -235,37 +235,45 @@ class MainAgent:
         logger.info(f"Processing query: '{query}' for symbol: '{symbol}'")
         
         try:
-            # Get relevant data first with error handling
+            # Get comprehensive data for AI analysis
             data = None
             if symbol and validate_symbol(symbol):
                 if self.vn_api.is_vn_stock(symbol):
-                    logger.info(f"Getting VN data for {symbol}")
-                    # Chạy song song các tác vụ với error handling
+                    logger.info(f"Getting comprehensive VN data for {symbol}")
+                    # Get all available data for comprehensive analysis
                     tasks = [
                         self.vn_api.get_stock_data(symbol),
                         run_in_threadpool(self._safe_get_price_prediction, symbol),
-                        run_in_threadpool(self._safe_get_risk_assessment, symbol)
+                        run_in_threadpool(self._safe_get_risk_assessment, symbol),
+                        run_in_threadpool(self._safe_get_investment_analysis, symbol),
+                        self.get_detailed_stock_info(symbol),
+                        run_in_threadpool(self._safe_get_ticker_news, symbol, 5)
                     ]
                     results = await asyncio.gather(*tasks, return_exceptions=True)
                     
                     data = {
                         "vn_stock_data": results[0] if not isinstance(results[0], Exception) else None,
                         "price_prediction": results[1] if not isinstance(results[1], Exception) else None,
-                        "risk_assessment": results[2] if not isinstance(results[2], Exception) else None
+                        "risk_assessment": results[2] if not isinstance(results[2], Exception) else None,
+                        "investment_analysis": results[3] if not isinstance(results[3], Exception) else None,
+                        "detailed_stock_info": results[4] if not isinstance(results[4], Exception) else None,
+                        "ticker_news": results[5] if not isinstance(results[5], Exception) else None
                     }
                 else:
-                    logger.info(f"Getting international data for {symbol}")
+                    logger.info(f"Getting comprehensive international data for {symbol}")
                     tasks = [
                         run_in_threadpool(self._safe_get_price_prediction, symbol),
                         run_in_threadpool(self._safe_get_investment_analysis, symbol),
-                        run_in_threadpool(self._safe_get_risk_assessment, symbol)
+                        run_in_threadpool(self._safe_get_risk_assessment, symbol),
+                        run_in_threadpool(self._safe_get_ticker_news, symbol, 5)
                     ]
                     results = await asyncio.gather(*tasks, return_exceptions=True)
                     
                     data = {
                         "price_prediction": results[0] if not isinstance(results[0], Exception) else None,
                         "investment_analysis": results[1] if not isinstance(results[1], Exception) else None,
-                        "risk_assessment": results[2] if not isinstance(results[2], Exception) else None
+                        "risk_assessment": results[2] if not isinstance(results[2], Exception) else None,
+                        "ticker_news": results[3] if not isinstance(results[3], Exception) else None
                     }
             
             # Use Gemini to generate expert advice

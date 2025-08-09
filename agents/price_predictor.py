@@ -2116,3 +2116,354 @@ REASONING: [giải thích ngắn]
             
         except Exception as e:
             return {'error': f'LSTM calendar analysis error: {str(e)}'}
+    
+    def _predict_today_close_price(self, symbol: str, risk_tolerance: int = 50, time_horizon: str = "Trung hạn", investment_amount: int = 10000000):
+        """Dự đoán giá kết phiên hôm nay với độ chính xác cao"""
+        try:
+            from datetime import datetime, time
+            import pytz
+            
+            # Get current Vietnam time
+            vn_tz = pytz.timezone('Asia/Ho_Chi_Minh')
+            current_vn_time = datetime.now(vn_tz)
+            market_close_time = time(15, 0)  # 3:00 PM Vietnam time
+            
+            # Check if market is still open
+            is_market_open = current_vn_time.time() < market_close_time and current_vn_time.weekday() < 5
+            
+            # Priority 1: Try LSTM for intraday prediction
+            if self.lstm_predictor and is_market_open:
+                try:
+                    print(f"🧠 Using LSTM for today's close price prediction: {symbol}")
+                    lstm_result = self.lstm_predictor.predict_with_ai_enhancement(symbol, 1)  # 1 day ahead
+                    
+                    if not lstm_result.get('error') and lstm_result['model_performance']['confidence'] > 15:
+                        # LSTM successful for today's prediction
+                        result = self._combine_lstm_with_traditional(lstm_result, symbol)
+                        
+                        # Get 1-day prediction from LSTM
+                        lstm_1d = lstm_result['predictions'].get('short_term', {}).get('1_days', {})
+                        if lstm_1d:
+                            result['predicted_close_price'] = lstm_1d['price']
+                            result['predicted_change_percent'] = lstm_1d['change_percent']
+                            result['predicted_change_amount'] = lstm_1d['change_amount']
+                            result['method_used'] = 'LSTM Intraday'
+                            result['confidence'] = lstm_result['model_performance']['confidence']
+                            
+                            # Add intraday-specific analysis
+                            result['intraday_analysis'] = self._get_intraday_analysis(symbol, current_vn_time, market_close_time)
+                            
+                            # Add risk-adjusted analysis
+                            result['risk_adjusted_analysis'] = self._get_risk_adjusted_analysis(
+                                result, risk_tolerance, time_horizon, investment_amount
+                            )
+                            
+                            return result
+                except Exception as e:
+                    print(f"⚠️ LSTM intraday prediction failed: {e}")
+            
+            # Priority 2: Enhanced traditional intraday prediction
+            result = self._predict_intraday_traditional(symbol, current_vn_time, market_close_time, is_market_open)
+            
+            # Add risk analysis
+            result['risk_adjusted_analysis'] = self._get_risk_adjusted_analysis(
+                result, risk_tolerance, time_horizon, investment_amount
+            )
+            
+            # Add AI enhancement if available
+            if self.ai_agent:
+                try:
+                    ai_analysis = self._get_ai_intraday_analysis(symbol, result, current_vn_time, is_market_open)
+                    result.update(ai_analysis)
+                except Exception as e:
+                    result['ai_error'] = str(e)
+            
+            return result
+            
+        except Exception as e:
+            return {"error": f"Today's close prediction error: {str(e)}"}
+    
+    def _predict_intraday_traditional(self, symbol: str, current_time, market_close_time, is_market_open: bool):
+        """Traditional intraday prediction using technical analysis"""
+        try:
+            # Get comprehensive analysis first
+            base_result = self.predict_comprehensive(symbol, self.vn_api, self.stock_info)
+            
+            if base_result.get('error'):
+                return base_result
+            
+            current_price = base_result['current_price']
+            tech_indicators = base_result.get('technical_indicators', {})
+            
+            # Intraday factors
+            hours_to_close = self._calculate_hours_to_close(current_time, market_close_time, is_market_open)
+            
+            # Calculate intraday momentum
+            intraday_momentum = self._calculate_intraday_momentum(tech_indicators, hours_to_close)
+            
+            # Volume analysis for intraday
+            volume_factor = self._analyze_intraday_volume(tech_indicators)
+            
+            # Market sentiment adjustment
+            sentiment_factor = self._get_market_sentiment_factor(tech_indicators)
+            
+            # Calculate predicted close price
+            base_change = intraday_momentum * volume_factor * sentiment_factor
+            
+            # Apply time decay (less change expected as market close approaches)
+            time_decay = max(0.1, hours_to_close / 6.5)  # 6.5 hours in trading day
+            adjusted_change = base_change * time_decay
+            
+            # Limit maximum intraday change to realistic levels
+            max_intraday_change = 0.05  # 5% max intraday change
+            adjusted_change = max(-max_intraday_change, min(max_intraday_change, adjusted_change))
+            
+            predicted_close = current_price * (1 + adjusted_change)
+            
+            # Calculate confidence based on market conditions
+            confidence = self._calculate_intraday_confidence(tech_indicators, hours_to_close, is_market_open)
+            
+            result = {
+                'symbol': symbol,
+                'current_price': current_price,
+                'predicted_close_price': round(predicted_close, 2),
+                'predicted_change_percent': round(adjusted_change * 100, 2),
+                'predicted_change_amount': round(predicted_close - current_price, 2),
+                'method_used': 'Traditional Intraday',
+                'confidence': confidence,
+                'market_status': 'Open' if is_market_open else 'Closed',
+                'hours_to_close': hours_to_close,
+                'intraday_factors': {
+                    'momentum': round(intraday_momentum, 4),
+                    'volume_factor': round(volume_factor, 4),
+                    'sentiment_factor': round(sentiment_factor, 4),
+                    'time_decay': round(time_decay, 4)
+                },
+                'analysis_time': current_time.strftime('%Y-%m-%d %H:%M:%S %Z'),
+                'prediction_type': 'intraday_close',
+                'technical_indicators': tech_indicators
+            }
+            
+            # Add intraday-specific analysis
+            result['intraday_analysis'] = self._get_intraday_analysis(symbol, current_time, market_close_time)
+            
+            return result
+            
+        except Exception as e:
+            return {"error": f"Traditional intraday prediction error: {str(e)}"}
+    
+    def _calculate_hours_to_close(self, current_time, market_close_time, is_market_open: bool):
+        """Calculate hours remaining until market close"""
+        try:
+            if not is_market_open:
+                return 0
+            
+            # Convert to minutes for more precision
+            current_minutes = current_time.hour * 60 + current_time.minute
+            close_minutes = market_close_time.hour * 60 + market_close_time.minute
+            
+            minutes_to_close = max(0, close_minutes - current_minutes)
+            hours_to_close = minutes_to_close / 60
+            
+            return hours_to_close
+            
+        except Exception as e:
+            return 3.0  # Default 3 hours
+    
+    def _calculate_intraday_momentum(self, tech_indicators: dict, hours_to_close: float):
+        """Calculate intraday momentum based on technical indicators"""
+        try:
+            momentum = 0
+            
+            # RSI momentum
+            rsi = tech_indicators.get('rsi', 50)
+            if rsi > 60:
+                momentum += 0.01 * (rsi - 50) / 50  # Positive momentum
+            elif rsi < 40:
+                momentum += 0.01 * (rsi - 50) / 50  # Negative momentum
+            
+            # MACD momentum
+            macd = tech_indicators.get('macd', 0)
+            macd_signal = tech_indicators.get('macd_signal', 0)
+            if macd > macd_signal:
+                momentum += 0.005
+            else:
+                momentum -= 0.005
+            
+            # Moving average momentum
+            sma_5 = tech_indicators.get('sma_5', 0)
+            sma_20 = tech_indicators.get('sma_20', 0)
+            if sma_5 > sma_20:
+                momentum += 0.003
+            else:
+                momentum -= 0.003
+            
+            # Time-based momentum decay
+            if hours_to_close < 1:  # Last hour - momentum may accelerate
+                momentum *= 1.2
+            elif hours_to_close > 5:  # Early in day - momentum may be stronger
+                momentum *= 1.1
+            
+            return momentum
+            
+        except Exception as e:
+            return 0
+    
+    def _analyze_intraday_volume(self, tech_indicators: dict):
+        """Analyze volume for intraday prediction"""
+        try:
+            volume_ratio = tech_indicators.get('volume_ratio', 1.0)
+            
+            # High volume supports price movement
+            if volume_ratio > 1.5:
+                return 1.2  # 20% boost
+            elif volume_ratio > 1.2:
+                return 1.1  # 10% boost
+            elif volume_ratio < 0.8:
+                return 0.9  # 10% reduction
+            elif volume_ratio < 0.5:
+                return 0.8  # 20% reduction
+            else:
+                return 1.0  # Neutral
+                
+        except Exception as e:
+            return 1.0
+    
+    def _get_market_sentiment_factor(self, tech_indicators: dict):
+        """Get market sentiment factor for intraday prediction"""
+        try:
+            sentiment = 1.0
+            
+            # Bollinger Bands position
+            bb_position = tech_indicators.get('bb_position', 0.5)
+            if bb_position > 0.8:
+                sentiment *= 0.95  # Near upper band - potential resistance
+            elif bb_position < 0.2:
+                sentiment *= 1.05  # Near lower band - potential support
+            
+            # Stochastic oscillator
+            stoch_k = tech_indicators.get('stoch_k', 50)
+            if stoch_k > 80:
+                sentiment *= 0.98  # Overbought
+            elif stoch_k < 20:
+                sentiment *= 1.02  # Oversold
+            
+            # Williams %R
+            williams_r = tech_indicators.get('williams_r', -50)
+            if williams_r > -20:
+                sentiment *= 0.97  # Overbought
+            elif williams_r < -80:
+                sentiment *= 1.03  # Oversold
+            
+            return sentiment
+            
+        except Exception as e:
+            return 1.0
+    
+    def _calculate_intraday_confidence(self, tech_indicators: dict, hours_to_close: float, is_market_open: bool):
+        """Calculate confidence for intraday prediction"""
+        try:
+            base_confidence = 60  # Base confidence for intraday
+            
+            # Market status adjustment
+            if not is_market_open:
+                base_confidence -= 20  # Lower confidence when market is closed
+            
+            # Time-based adjustment
+            if hours_to_close < 0.5:  # Less than 30 minutes
+                base_confidence += 15  # Higher confidence near close
+            elif hours_to_close < 1:  # Less than 1 hour
+                base_confidence += 10
+            elif hours_to_close > 5:  # More than 5 hours
+                base_confidence -= 10  # Lower confidence early in day
+            
+            # Volume-based adjustment
+            volume_ratio = tech_indicators.get('volume_ratio', 1.0)
+            if volume_ratio > 1.2:
+                base_confidence += 5  # Higher volume = higher confidence
+            elif volume_ratio < 0.8:
+                base_confidence -= 5
+            
+            # Volatility adjustment
+            volatility = tech_indicators.get('volatility', 20)
+            if volatility > 30:
+                base_confidence -= 10  # High volatility = lower confidence
+            elif volatility < 15:
+                base_confidence += 5  # Low volatility = higher confidence
+            
+            # Technical indicator alignment
+            rsi = tech_indicators.get('rsi', 50)
+            macd = tech_indicators.get('macd', 0)
+            macd_signal = tech_indicators.get('macd_signal', 0)
+            
+            # Check for clear signals
+            clear_signals = 0
+            if 30 <= rsi <= 70:  # RSI in normal range
+                clear_signals += 1
+            if abs(macd - macd_signal) > 0.001:  # Clear MACD signal
+                clear_signals += 1
+            
+            base_confidence += clear_signals * 3
+            
+            return max(20, min(85, round(base_confidence, 1)))
+            
+        except Exception as e:
+            return 50
+    
+    def _get_intraday_analysis(self, symbol: str, current_time, market_close_time):
+        """Generate intraday-specific analysis"""
+        try:
+            analysis = {
+                'prediction_type': 'Today Close Price',
+                'current_time': current_time.strftime('%H:%M:%S'),
+                'market_close_time': market_close_time.strftime('%H:%M:%S'),
+                'trading_session': self._get_trading_session(current_time),
+                'intraday_insights': []
+            }
+            
+            # Time-based insights
+            current_hour = current_time.hour
+            if current_hour < 10:
+                analysis['intraday_insights'].append("🌅 Phiên sáng - thường có volatility cao")
+            elif current_hour < 12:
+                analysis['intraday_insights'].append("📈 Cuối phiên sáng - xu hướng có thể rõ ràng hơn")
+            elif current_hour < 14:
+                analysis['intraday_insights'].append("🍽️ Giờ nghỉ trưa - volume thường thấp")
+            elif current_hour < 15:
+                analysis['intraday_insights'].append("📊 Phiên chiều - chuẩn bị cho close")
+            else:
+                analysis['intraday_insights'].append("🔔 Sau giờ giao dịch - dựa trên giá đóng cửa")
+            
+            # Day of week insights
+            weekday = current_time.weekday()
+            if weekday == 0:  # Monday
+                analysis['intraday_insights'].append("📅 Thứ 2 - có thể có gap từ tin tức cuối tuần")
+            elif weekday == 4:  # Friday
+                analysis['intraday_insights'].append("📅 Thứ 6 - có thể có profit-taking")
+            
+            return analysis
+            
+        except Exception as e:
+            return {'error': f'Intraday analysis error: {str(e)}'}
+    
+    def _get_trading_session(self, current_time):
+        """Determine current trading session"""
+        hour = current_time.hour
+        minute = current_time.minute
+        
+        if hour < 9:
+            return "Pre-market"
+        elif hour == 9 and minute < 15:
+            return "Opening"
+        elif hour < 11 or (hour == 11 and minute <= 30):
+            return "Morning Session"
+        elif hour < 13:
+            return "Lunch Break"
+        elif hour == 13:
+            return "Afternoon Opening"
+        elif hour < 15:
+            return "Afternoon Session"
+        elif hour == 15 and minute == 0:
+            return "Market Close"
+        else:
+            return "After Hours"
