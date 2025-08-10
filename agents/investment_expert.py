@@ -782,30 +782,7 @@ class InvestmentExpert:
                 'reason': f'Điểm số {score}/100 - Khuyến nghị bán, rủi ro cao'
             }
     
-    def analyze_stock_enhanced(self, symbol: str, risk_tolerance: int = 50, time_horizon: str = "Trung hạn", investment_amount: int = 100000000) -> Dict[str, Any]:
-        """Enhanced investment analysis with investment profile parameters"""
-        try:
-            # Get base analysis
-            base_analysis = self.analyze_stock(symbol)
-            
-            if base_analysis.get('error'):
-                return base_analysis
-            
-            # Adjust analysis based on investment profile
-            adjusted_analysis = self._adjust_analysis_for_profile(base_analysis, risk_tolerance, time_horizon, investment_amount)
-            
-            # Add investment profile context
-            adjusted_analysis['investment_profile'] = {
-                'risk_tolerance': risk_tolerance,
-                'time_horizon': time_horizon,
-                'investment_amount': investment_amount,
-                'risk_profile': self._get_risk_profile_name(risk_tolerance)
-            }
-            
-            return adjusted_analysis
-            
-        except Exception as e:
-            return {'error': f'Enhanced investment analysis failed: {str(e)}'}
+
     
     def _adjust_analysis_for_profile(self, base_analysis: dict, risk_tolerance: int, time_horizon: str, investment_amount: int):
         """Adjust investment analysis based on investment profile"""
@@ -873,13 +850,13 @@ class InvestmentExpert:
         else:
             return 180
     
-    def analyze_stock(self, symbol: str) -> Dict[str, Any]:
+    def analyze_stock(self, symbol: str, risk_tolerance: int = 50, time_horizon: str = "Trung hạn", investment_amount: int = 100000000) -> Dict[str, Any]:
         """
         Main method to analyze stock with investment recommendation
-        Simplified and optimized for better performance
+        Enhanced with investment profile parameters
         """
         try:
-            print(f"🚀 Starting investment analysis for {symbol}...")
+            print(f"🚀 Starting investment analysis for {symbol} with profile: {risk_tolerance}% risk, {time_horizon}, {investment_amount:,} VND...")
             
             # Run async analysis in proper event loop
             try:
@@ -895,6 +872,18 @@ class InvestmentExpert:
             except (RuntimeError, asyncio.TimeoutError):
                 # Fallback to sync analysis
                 result = self._run_analysis_sync(symbol)
+            
+            # Adjust analysis based on investment profile
+            if not result.get('error'):
+                result = self._adjust_analysis_for_profile(result, risk_tolerance, time_horizon, investment_amount)
+                
+                # Add investment profile context
+                result['investment_profile'] = {
+                    'risk_tolerance': risk_tolerance,
+                    'time_horizon': time_horizon,
+                    'investment_amount': investment_amount,
+                    'risk_profile': self._get_risk_profile_name(risk_tolerance)
+                }
             
             # Add AI enhancement if available - ALWAYS try to get AI advice
             if not result.get('error'):
@@ -1229,51 +1218,32 @@ class InvestmentExpert:
             return self._get_fallback_result(symbol, str(e))
     
     def get_ai_enhancement(self, symbol: str, base_analysis: Dict[str, Any]) -> Dict[str, Any]:
-        """Get AI enhancement for investment analysis"""
+        """Get AI enhancement for investment analysis with DIVERSE advice"""
         if not self.ai_agent:
-            return {'ai_enhanced': False, 'ai_error': 'AI agent not available'}
+            # Create diverse fallback advice even without AI
+            investment_profile = base_analysis.get('investment_profile', {})
+            risk_tolerance = investment_profile.get('risk_tolerance', 50)
+            time_horizon = investment_profile.get('time_horizon', 'Trung hạn')
+            investment_amount = investment_profile.get('investment_amount', 100000000)
+            
+            ai_advice, ai_reasoning = self._create_diverse_investment_advice(symbol, base_analysis, risk_tolerance, time_horizon, investment_amount)
+            return {
+                'ai_enhanced': False, 
+                'ai_error': 'AI agent not available',
+                'ai_advice': ai_advice,
+                'ai_reasoning': ai_reasoning
+            }
         
         try:
-            # Get analysis details for context
-            analysis_details = base_analysis.get('analysis', {})
-            financial = analysis_details.get('financial', {})
-            technical = analysis_details.get('technical', {})
-            valuation = analysis_details.get('valuation', {})
-            
-            # Get investment profile data if available
+            # Get investment profile data
             investment_profile = base_analysis.get('investment_profile', {})
             risk_tolerance = investment_profile.get('risk_tolerance', 50)
             time_horizon = investment_profile.get('time_horizon', 'Trung hạn')
             investment_amount = investment_profile.get('investment_amount', 100000000)
             risk_profile = investment_profile.get('risk_profile', 'Cân bằng')
             
-            context = f"""
-Bạn là chuyên gia đầu tư. Hãy phân tích cổ phiếu {symbol} dựa trên hồ sơ đầu tư:
-
-HỒ SƠ ĐẦU TƯ:
-- Hồ sơ rủi ro: {risk_profile} ({risk_tolerance}%)
-- Thời gian đầu tư: {time_horizon}
-- Số tiền đầu tư: {investment_amount:,} VND
-
-PHÂN TÍCH HIỆN TẠI:
-- Khuyến nghị: {base_analysis.get('recommendation', 'HOLD')}
-- Điểm số: {base_analysis.get('score', 50)}/100
-- Lý do: {base_analysis.get('reason', 'Không có thông tin')}
-- Điểm tài chính: {financial.get('total_score', 50)}/100
-- Điểm kỹ thuật: {technical.get('total_score', 50)}/100
-- Điểm định giá: {valuation.get('total_score', 50)}/100
-
-YÊU CẦU DỰA TRÊN HỒ SƠ:
-1. Điều chỉnh khuyến nghị phù hợp với hồ sơ {risk_profile}
-2. Tính toán tỷ trọng đầu tư cho {time_horizon}
-3. Khuyến nghị cụ thể với số tiền {investment_amount:,} VND
-4. Chiến lược phù hợp với nhà đầu tư {risk_profile}
-
-Trả lời ngắn gọn, thực tế cho nhà đầu tư Việt Nam.
-
-ADVICE: [lời khuyên đầu tư dựa trên hồ sơ]
-REASONING: [lý do và chiến lược phù hợp với hồ sơ]
-"""
+            # Create diverse context based on profile combination
+            context = self._create_diverse_investment_context(symbol, base_analysis, risk_tolerance, time_horizon, investment_amount, risk_profile)
             
             ai_result = self.ai_agent.generate_with_fallback(context, 'investment_analysis', max_tokens=500)
             
@@ -1281,24 +1251,209 @@ REASONING: [lý do và chiến lược phù hợp với hồ sơ]
                 # Parse AI response for advice and reasoning
                 ai_advice, ai_reasoning = self._parse_ai_advice(ai_result['response'])
                 
+                # If AI doesn't provide diverse enough response, create fallback
+                if not ai_advice or len(ai_advice) < 50:
+                    ai_advice, ai_reasoning = self._create_diverse_investment_advice(symbol, base_analysis, risk_tolerance, time_horizon, investment_amount)
+                
                 return {
                     'ai_enhanced': True,
                     'ai_investment_analysis': ai_result['response'],
                     'ai_model_used': ai_result.get('model_used', 'Unknown'),
-                    'ai_advice': ai_advice or f"Khuyến nghị {base_analysis.get('recommendation', 'HOLD')} dựa trên phân tích",
-                    'ai_reasoning': ai_reasoning or f"Điểm số {base_analysis.get('score', 50)}/100 cho thấy tiềm năng đầu tư"
+                    'ai_advice': ai_advice,
+                    'ai_reasoning': ai_reasoning
                 }
             else:
-                # Return fallback advice even when AI fails
+                # Create diverse fallback advice
+                ai_advice, ai_reasoning = self._create_diverse_investment_advice(symbol, base_analysis, risk_tolerance, time_horizon, investment_amount)
                 return {
                     'ai_enhanced': False, 
                     'ai_error': ai_result.get('error', 'AI analysis failed'),
-                    'ai_advice': f"Khuyến nghị {base_analysis.get('recommendation', 'HOLD')} dựa trên phân tích tài chính",
-                    'ai_reasoning': f"Điểm số {base_analysis.get('score', 50)}/100 - AI không khả dụng"
+                    'ai_advice': ai_advice,
+                    'ai_reasoning': ai_reasoning
                 }
                 
         except Exception as e:
-            return {'ai_enhanced': False, 'ai_error': str(e)}
+            # Create diverse fallback advice even on error
+            investment_profile = base_analysis.get('investment_profile', {})
+            risk_tolerance = investment_profile.get('risk_tolerance', 50)
+            time_horizon = investment_profile.get('time_horizon', 'Trung hạn')
+            investment_amount = investment_profile.get('investment_amount', 100000000)
+            
+            ai_advice, ai_reasoning = self._create_diverse_investment_advice(symbol, base_analysis, risk_tolerance, time_horizon, investment_amount)
+            return {
+                'ai_enhanced': False, 
+                'ai_error': str(e),
+                'ai_advice': ai_advice,
+                'ai_reasoning': ai_reasoning
+            }
+    
+    def _create_diverse_investment_context(self, symbol, base_analysis, risk_tolerance, time_horizon, investment_amount, risk_profile):
+        """Create diverse context based on specific investment profile combination"""
+        recommendation = base_analysis.get('recommendation', 'HOLD')
+        score = base_analysis.get('score', 50)
+        max_position = self._calculate_max_position(risk_tolerance)
+        
+        # Create different contexts based on profile combinations
+        if risk_tolerance <= 30:  # Conservative
+            if "Ngắn hạn" in time_horizon:
+                focus = "bảo toàn vốn và thanh khoản"
+                strategy = "ưu tiên blue-chip, tránh biến động mạnh"
+                concern = "rủi ro mất vốn trong thời gian ngắn"
+            elif "Dài hạn" in time_horizon:
+                focus = "tăng trưởng ổn định với cổ tức"
+                strategy = "đầu tư vào cổ phiếu có cổ tức cao, tăng trưởng bền vững"
+                concern = "lạm phát và suy giảm giá trị tiền tệ"
+            else:
+                focus = "cân bằng giữa an toàn và tăng trưởng nhẹ"
+                strategy = "phân bổ 70% blue-chip, 30% cổ phiếu tăng trưởng ổn định"
+                concern = "biến động thị trường trung hạn"
+        elif risk_tolerance >= 70:  # Aggressive
+            if "Ngắn hạn" in time_horizon:
+                focus = "tối đa hóa lợi nhuận nhanh"
+                strategy = "tập trung vào momentum, có thể swing trading"
+                concern = "bỏ lỡ cơ hội tăng trưởng mạnh"
+            elif "Dài hạn" in time_horizon:
+                focus = "tăng trưởng vượt trội dài hạn"
+                strategy = "đầu tư vào growth stocks, công nghệ, mid-cap"
+                concern = "lạc hậu so với thị trường tăng trưởng"
+            else:
+                focus = "tăng trưởng mạnh với rủi ro có kiểm soát"
+                strategy = "60% growth stocks, 40% established companies"
+                concern = "cơ hội tăng trưởng bị hạn chế"
+        else:  # Balanced
+            if "Ngắn hạn" in time_horizon:
+                focus = "tăng trưởng vừa phải với rủi ro kiểm soát"
+                strategy = "đa dạng hóa giữa các nhóm cổ phiếu"
+                concern = "biến động thị trường ngắn hạn"
+            elif "Dài hạn" in time_horizon:
+                focus = "tăng trưởng dài hạn với rủi ro cân bằng"
+                strategy = "kết hợp cổ phiếu tăng trưởng và cổ tức"
+                concern = "không tối ưu hóa được risk-return"
+            else:
+                focus = "cân bằng tối ưu giữa rủi ro và lợi nhuận"
+                strategy = "phân bổ đều giữa các loại tài sản"
+                concern = "không đạt được mục tiêu tài chính"
+        
+        return f"""
+Bạn là chuyên gia đầu tư cho nhà đầu tư {risk_profile}. Phân tích cổ phiếu {symbol}:
+
+HỒ SƠ ĐẦU TƯ CỤ THỂ:
+- Mức độ rủi ro: {risk_tolerance}% ({risk_profile})
+- Thời gian: {time_horizon} - {focus}
+- Vốn đầu tư: {investment_amount:,} VND
+- Chiến lược: {strategy}
+- Mối quan tâm chính: {concern}
+
+PHÂN TÍCH HỆ THỐNG {symbol}:
+- Khuyến nghị: {recommendation} (Điểm: {score}/100)
+- Lý do: {base_analysis.get('reason', 'Phân tích tổng hợp')}
+
+TÍNH TOÁN CỤ THỂ:
+- Tỷ trọng tối đa: {max_position*100:.0f}% = {investment_amount * max_position:,.0f} VND
+- Số cổ phiếu ước tính: ~{int((investment_amount * max_position) / 50000)} cổ phiếu
+
+Yêu cầu phân tích CỤ THỂ cho hồ sơ {risk_profile} + {time_horizon}:
+
+ADVICE: [khuyến nghị cụ thể cho {risk_profile} với {time_horizon} và {investment_amount:,} VND]
+REASONING: [giải thích tại sao {recommendation} phù hợp với {risk_tolerance}% risk + {focus}]
+"""
+    
+    def _create_diverse_investment_advice(self, symbol, base_analysis, risk_tolerance, time_horizon, investment_amount):
+        """Create diverse investment advice based on profile"""
+        recommendation = base_analysis.get('recommendation', 'HOLD')
+        score = base_analysis.get('score', 50)
+        max_position = self._calculate_max_position(risk_tolerance)
+        max_investment = investment_amount * max_position
+        
+        # Create profile-specific advice
+        if risk_tolerance <= 30:  # Conservative
+            if "Ngắn hạn" in time_horizon:
+                if recommendation in ['STRONG BUY', 'BUY']:
+                    advice = f"Với hồ sơ thận trọng + ngắn hạn: {symbol} phù hợp với {max_position*100:.0f}% danh mục ({max_investment:,.0f} VND). Ưu tiên bảo toàn vốn, sẵn sàng chốt lời sớm."
+                    reasoning = f"Điểm {score}/100 của {symbol} đủ tốt cho nhà đầu tư thận trọng. Thời gian ngắn hạn cần ưu tiên thanh khoản và ít biến động."
+                elif recommendation == 'HOLD':
+                    advice = f"Hồ sơ thận trọng + ngắn hạn: Không khuyến nghị mua {symbol} mới. Nếu đã có, giữ tối đa {max_position*100:.0f}% và theo dõi sát."
+                    reasoning = f"Điểm {score}/100 chưa đủ hấp dẫn cho nhà đầu tư thận trọng trong ngắn hạn. Rủi ro cao hơn lợi ích tiềm năng."
+                else:
+                    advice = f"Hồ sơ thận trọng + ngắn hạn: Tránh {symbol}. Tập trung vào tài sản an toàn hơn với {investment_amount:,} VND."
+                    reasoning = f"Điểm {score}/100 và khuyến nghị {recommendation} không phù hợp với hồ sơ thận trọng ngắn hạn."
+            elif "Dài hạn" in time_horizon:
+                if recommendation in ['STRONG BUY', 'BUY']:
+                    advice = f"Hồ sơ thận trọng + dài hạn: {symbol} là lựa chọn tốt với {max_position*100:.0f}% danh mục ({max_investment:,.0f} VND). Tập trung vào cổ tức và tăng trưởng ổn định."
+                    reasoning = f"Điểm {score}/100 và thời gian dài hạn giúp làm mịn rủi ro. Phù hợp với chiến lược buy-and-hold của nhà đầu tư thận trọng."
+                elif recommendation == 'HOLD':
+                    advice = f"Hồ sơ thận trọng + dài hạn: {symbol} có thể cân nhắc với tỷ trọng nhỏ {max_position*100:.0f}%. Ưu tiên các cổ phiếu có cổ tức cao hơn."
+                    reasoning = f"Điểm {score}/100 ở mức trung bình. Thời gian dài hạn cho phép chờ đợi, nhưng có lựa chọn tốt hơn cho nhà đầu tư thận trọng."
+                else:
+                    advice = f"Hồ sơ thận trọng + dài hạn: Không phù hợp với {symbol}. Tìm kiếm cổ phiếu blue-chip có cổ tức ổn định."
+                    reasoning = f"Điểm {score}/100 quá thấp cho nhà đầu tư thận trọng, ngay cả trong dài hạn."
+            else:  # Trung hạn
+                if recommendation in ['STRONG BUY', 'BUY']:
+                    advice = f"Hồ sơ thận trọng + trung hạn: {symbol} phù hợp với {max_position*100:.0f}% danh mục ({max_investment:,.0f} VND). Cân bằng giữa an toàn và tăng trưởng."
+                    reasoning = f"Điểm {score}/100 và thời gian trung hạn tạo sự cân bằng tốt. Đủ thời gian để phục hồi nhưng không quá rủi ro."
+                else:
+                    advice = f"Hồ sơ thận trọng + trung hạn: Thận trọng với {symbol}. Ưu tiên đa dạng hóa với {investment_amount:,} VND."
+                    reasoning = f"Điểm {score}/100 chưa đủ thuyết phục cho nhà đầu tư thận trọng trong khung thời gian trung hạn."
+        
+        elif risk_tolerance >= 70:  # Aggressive
+            if "Ngắn hạn" in time_horizon:
+                if recommendation in ['STRONG BUY', 'BUY']:
+                    advice = f"Hồ sơ mạo hiểm + ngắn hạn: Tận dụng cơ hội {symbol} với {max_position*100:.0f}% danh mục ({max_investment:,.0f} VND). Có thể tăng tỷ trọng nếu có catalyst."
+                    reasoning = f"Điểm {score}/100 và risk tolerance {risk_tolerance}% cho phép tận dụng momentum. Thời gian ngắn hạn phù hợp với chiến lược tích cực."
+                elif recommendation == 'HOLD':
+                    advice = f"Hồ sơ mạo hiểm + ngắn hạn: {symbol} có thể thử nghiệm với {max_position*100:.0f}%. Theo dõi sát để tăng tỷ trọng nếu có tín hiệu tích cực."
+                    reasoning = f"Điểm {score}/100 ở mức trung bình nhưng risk tolerance {risk_tolerance}% cho phép thử nghiệm. Có thể có upside bất ngờ."
+                else:
+                    advice = f"Hồ sơ mạo hiểm + ngắn hạn: Tránh {symbol} hiện tại. Tìm kiếm cơ hội tốt hơn với {investment_amount:,} VND."
+                    reasoning = f"Điểm {score}/100 quá thấp ngay cả với risk tolerance {risk_tolerance}%. Có nhiều cơ hội tốt hơn trong ngắn hạn."
+            elif "Dài hạn" in time_horizon:
+                if recommendation in ['STRONG BUY', 'BUY']:
+                    advice = f"Hồ sơ mạo hiểm + dài hạn: {symbol} là cơ hội xuất sắc với {max_position*100:.0f}% danh mục ({max_investment:,.0f} VND). Tập trung vào tiềm năng tăng trưởng dài hạn."
+                    reasoning = f"Điểm {score}/100 kết hợp với risk tolerance {risk_tolerance}% và thời gian dài hạn tạo lợi thế lớn. Có thể chấp nhận biến động để đạt return cao."
+                elif recommendation == 'HOLD':
+                    advice = f"Hồ sơ mạo hiểm + dài hạn: {symbol} đáng cân nhắc với {max_position*100:.0f}%. Có thể tăng tỷ trọng nếu có dấu hiệu cải thiện."
+                    reasoning = f"Điểm {score}/100 và thời gian dài hạn cho phép chờ đợi catalyst. Risk tolerance {risk_tolerance}% hỗ trợ quyết định này."
+                else:
+                    advice = f"Hồ sơ mạo hiểm + dài hạn: Tạm thời tránh {symbol}. Chờ điểm vào tốt hơn hoặc tìm growth stocks khác."
+                    reasoning = f"Điểm {score}/100 chưa phù hợp ngay cả với risk tolerance {risk_tolerance}%. Có nhiều lựa chọn tăng trưởng tốt hơn."
+            else:  # Trung hạn
+                if recommendation in ['STRONG BUY', 'BUY']:
+                    advice = f"Hồ sơ mạo hiểm + trung hạn: {symbol} phù hợp với {max_position*100:.0f}% danh mục ({max_investment:,.0f} VND). Cân bằng giữa tăng trưởng và kiểm soát rủi ro."
+                    reasoning = f"Điểm {score}/100 và risk tolerance {risk_tolerance}% tạo cơ hội tốt. Thời gian trung hạn đủ để tận dụng chu kỳ thị trường."
+                else:
+                    advice = f"Hồ sơ mạo hiểm + trung hạn: Thận trọng với {symbol}. Tìm kiếm cơ hội có tiềm năng cao hơn."
+                    reasoning = f"Điểm {score}/100 chưa đủ hấp dẫn cho nhà đầu tư mạo hiểm trong khung thời gian trung hạn."
+        
+        else:  # Balanced
+            if "Ngắn hạn" in time_horizon:
+                if recommendation in ['STRONG BUY', 'BUY']:
+                    advice = f"Hồ sơ cân bằng + ngắn hạn: {symbol} phù hợp với {max_position*100:.0f}% danh mục ({max_investment:,.0f} VND). Cân bằng giữa cơ hội và rủi ro."
+                    reasoning = f"Điểm {score}/100 phù hợp với risk tolerance {risk_tolerance}%. Thời gian ngắn hạn cần cân bằng tốt giữa lợi nhuận và an toàn."
+                elif recommendation == 'HOLD':
+                    advice = f"Hồ sơ cân bằng + ngắn hạn: {symbol} có thể cân nhắc với tỷ trọng nhỏ {max_position*100:.0f}%. Đa dạng hóa để giảm rủi ro."
+                    reasoning = f"Điểm {score}/100 ở mức trung bình phù hợp với hồ sơ cân bằng. Thời gian ngắn hạn cần thận trọng hơn."
+                else:
+                    advice = f"Hồ sơ cân bằng + ngắn hạn: Tránh {symbol} hiện tại. Tập trung vào các lựa chọn cân bằng hơn."
+                    reasoning = f"Điểm {score}/100 không phù hợp với chiến lược cân bằng trong ngắn hạn."
+            elif "Dài hạn" in time_horizon:
+                if recommendation in ['STRONG BUY', 'BUY']:
+                    advice = f"Hồ sơ cân bằng + dài hạn: {symbol} là lựa chọn tốt với {max_position*100:.0f}% danh mục ({max_investment:,.0f} VND). Tối ưu hóa risk-adjusted return."
+                    reasoning = f"Điểm {score}/100 và thời gian dài hạn tạo sự cân bằng tốt. Risk tolerance {risk_tolerance}% phù hợp với chiến lược dài hạn."
+                elif recommendation == 'HOLD':
+                    advice = f"Hồ sơ cân bằng + dài hạn: {symbol} đáng cân nhắc với {max_position*100:.0f}%. Kết hợp với các cổ phiếu khác để đa dạng hóa."
+                    reasoning = f"Điểm {score}/100 phù hợp với hồ sơ cân bằng. Thời gian dài hạn cho phép chờ đợi cải thiện."
+                else:
+                    advice = f"Hồ sơ cân bằng + dài hạn: Không ưu tiên {symbol}. Tìm kiếm cổ phiếu có risk-return tốt hơn."
+                    reasoning = f"Điểm {score}/100 chưa đạt tiêu chuẩn cho chiến lược cân bằng dài hạn."
+            else:  # Trung hạn
+                if recommendation in ['STRONG BUY', 'BUY']:
+                    advice = f"Hồ sơ cân bằng + trung hạn: {symbol} phù hợp với {max_position*100:.0f}% danh mục ({max_investment:,.0f} VND). Cân bằng tối ưu giữa rủi ro và cơ hội."
+                    reasoning = f"Điểm {score}/100 và risk tolerance {risk_tolerance}% tạo sự cân bằng lý tưởng. Thời gian trung hạn đủ để tận dụng tiềm năng."
+                else:
+                    advice = f"Hồ sơ cân bằng + trung hạn: Thận trọng với {symbol}. Ưu tiên đa dạng hóa danh mục với {investment_amount:,} VND."
+                    reasoning = f"Điểm {score}/100 chưa đủ thuyết phục cho chiến lược cân bằng trong khung thời gian trung hạn."
+        
+        return advice, reasoning
     
     def _parse_ai_advice(self, ai_response: str):
         """Parse AI response for advice and reasoning"""

@@ -597,11 +597,38 @@ def display_risk_assessment(risk):
     # AI-Enhanced Risk Advice Section - ALWAYS show
     st.markdown("### 🤖 Lời khuyên quản lý rủi ro từ AI")
     
-    # Get AI advice (with fallback)
-    display_advice = ai_advice or f"Rủi ro {risk_level} - cần quản lý position sizing thận trọng"
-    display_reasoning = ai_reasoning or f"Volatility {volatility}% yêu cầu kiểm soát rủi ro chặt chẽ"
+    # Get sidebar data for personalized advice
+    sidebar_risk_tolerance = risk_tolerance
+    sidebar_time_horizon = time_horizon  
+    sidebar_investment_amount = investment_amount
     
-    # Display AI advice with risk-appropriate colors
+    # Calculate risk profile from sidebar data
+    if sidebar_risk_tolerance <= 30:
+        risk_profile = "Thận trọng"
+        max_position = 0.05  # 5%
+        stop_loss_pct = 5
+    elif sidebar_risk_tolerance <= 70:
+        risk_profile = "Cân bằng"
+        max_position = 0.10  # 10%
+        stop_loss_pct = 8
+    else:
+        risk_profile = "Mạo hiểm"
+        max_position = 0.20  # 20%
+        stop_loss_pct = 12
+    
+    # Calculate position sizing from sidebar data
+    max_investment = sidebar_investment_amount * max_position
+    
+    # Generate personalized advice using REAL sidebar data
+    personalized_advice = f"""Với hồ sơ rủi ro {risk_profile.lower()} ({sidebar_risk_tolerance}%), thời gian đầu tư {sidebar_time_horizon.lower()} và số tiền {sidebar_investment_amount:,} VND, nên đầu tư tối đa {max_position*100:.0f}% số tiền ({max_investment:,.0f} VND) vào {symbol}. Đặt stop-loss ở mức -{stop_loss_pct}% so với giá mua vào. Đa dạng hóa danh mục đầu tư vào các cổ phiếu khác và/hoặc tài sản khác để giảm thiểu rủi ro tổng thể."""
+    
+    personalized_reasoning = f"""Dựa trên hồ sơ rủi ro {risk_profile.lower()}, volatility {volatility:.1f}% và thời gian đầu tư {sidebar_time_horizon.lower()}, tỷ trọng {max_position*100:.0f}% là phù hợp để cân bằng giữa cơ hội và rủi ro."""
+    
+    # Use personalized advice instead of AI advice
+    display_advice = personalized_advice
+    display_reasoning = personalized_reasoning
+    
+    # Display advice with risk-appropriate colors
     advice_color = '#dc3545' if 'cao' in display_advice.lower() or 'high' in display_advice.lower() else '#28a745' if 'thấp' in display_advice.lower() or 'low' in display_advice.lower() else '#ffc107'
     
     st.markdown(f"""
@@ -626,28 +653,59 @@ def display_risk_assessment(risk):
             formatted_text = ai_text.replace('. ', '.\n\n').replace(': ', ':\n\n')
             st.markdown(f"**🤖 AI Risk Analysis:**\n\n{formatted_text}", unsafe_allow_html=True)
         else:
-            # Show fallback analysis
+            # Get sidebar data for personalized fallback analysis
+            sidebar_risk_tolerance = globals().get('risk_tolerance', 50)
+            sidebar_time_horizon = globals().get('time_horizon', 'Trung hạn')  
+            sidebar_investment_amount = globals().get('investment_amount', 100000000)
+            sidebar_symbol = globals().get('symbol', 'N/A')
+            
+            # Calculate risk profile from sidebar data
+            if sidebar_risk_tolerance <= 30:
+                risk_profile = "Thận trọng"
+                max_position = 0.05  # 5%
+                stop_loss_pct = 5
+            elif sidebar_risk_tolerance <= 70:
+                risk_profile = "Cân bằng"
+                max_position = 0.10  # 10%
+                stop_loss_pct = 8
+            else:
+                risk_profile = "Mạo hiểm"
+                max_position = 0.20  # 20%
+                stop_loss_pct = 12
+            
+            # Calculate position sizing from sidebar data
+            max_investment = sidebar_investment_amount * max_position
+            
+            # Show fallback analysis with REAL sidebar data
             st.markdown(f"""
-            **⚠️ Phân tích rủi ro:**
+            **⚠️ Phân tích rủi ro cho {sidebar_symbol}:**
             - Mức rủi ro: {risk_level}
             - Volatility: {volatility:.2f}%
             - Beta: {beta:.3f}
             - VaR 95%: {var_95:.2f}%
             - Risk Score: {risk_score}/10
             
-            **💡 Khuyến nghị quản lý rủi ro:**
-            Với mức rủi ro {risk_level} và volatility {volatility:.1f}%, nhà đầu tư nên:
-            - Quản lý position sizing thận trọng
-            - Đặt stop-loss phù hợp
-            - Theo dõi biến động thị trường
+            **👤 Hồ sơ đầu tư của bạn:**
+            - Hồ sơ rủi ro: {risk_profile} ({sidebar_risk_tolerance}%)
+            - Thời gian đầu tư: {sidebar_time_horizon}
+            - Số tiền đầu tư: {sidebar_investment_amount:,} VND
+            - Tỷ trọng khuyến nghị: {max_position*100:.0f}% ({max_investment:,.0f} VND)
+            - Stop-loss khuyến nghị: {stop_loss_pct}%
+            
+            **💡 Khuyến nghị quản lý rủi ro cá nhân hóa:**
+            Với hồ sơ rủi ro {risk_profile.lower()}, mức rủi ro {risk_level} và volatility {volatility:.1f}%, bạn nên:
+            - Đầu tư tối đa {max_position*100:.0f}% số tiền ({max_investment:,.0f} VND) vào {sidebar_symbol}
+            - Đặt stop-loss ở mức -{stop_loss_pct}% so với giá mua vào
+            - Đa dạng hóa danh mục để giảm thiểu rủi ro tổng thể
+            - Theo dõi biến động thị trường phù hợp với thời gian đầu tư {sidebar_time_horizon.lower()}
             """)
     
     # Show risk-adjusted analysis using REAL sidebar data
     with st.expander("🎯 Phân tích theo hồ sơ rủi ro", expanded=True):
         # Get current data from sidebar (passed from main scope)
-        sidebar_risk_tolerance = risk_tolerance
-        sidebar_time_horizon = time_horizon  
-        sidebar_investment_amount = investment_amount
+        sidebar_risk_tolerance = globals().get('risk_tolerance', 50)
+        sidebar_time_horizon = globals().get('time_horizon', 'Trung hạn')  
+        sidebar_investment_amount = globals().get('investment_amount', 100000000)
         
         # Calculate risk profile from sidebar data
         if sidebar_risk_tolerance <= 30:
@@ -1150,9 +1208,37 @@ def display_investment_analysis(inv):
     # AI-Enhanced Investment Advice Section - ALWAYS show
     st.markdown("### 🤖 Lời khuyên đầu tư từ AI")
     
-    # Get AI advice (with fallback)
-    display_advice = ai_advice or f"Khuyến nghị {recommendation} dựa trên phân tích tài chính"
-    display_reasoning = ai_reasoning or f"Điểm số {score}/100 với {confidence*100:.0f}% độ tin cậy"
+    # Get sidebar data for personalized advice
+    sidebar_risk_tolerance = globals().get('risk_tolerance', 50)
+    sidebar_time_horizon = globals().get('time_horizon', 'Trung hạn')  
+    sidebar_investment_amount = globals().get('investment_amount', 100000000)
+    sidebar_symbol = globals().get('symbol', 'N/A')
+    
+    # Calculate risk profile from sidebar data
+    if sidebar_risk_tolerance <= 30:
+        risk_profile = "Thận trọng"
+        max_position = 0.05  # 5%
+        stop_loss_pct = 5
+    elif sidebar_risk_tolerance <= 70:
+        risk_profile = "Cân bằng"
+        max_position = 0.10  # 10%
+        stop_loss_pct = 8
+    else:
+        risk_profile = "Mạo hiểm"
+        max_position = 0.20  # 20%
+        stop_loss_pct = 12
+    
+    # Calculate position sizing from sidebar data
+    max_investment = sidebar_investment_amount * max_position
+    
+    # Generate personalized advice using REAL sidebar data
+    personalized_advice = f"""Với hồ sơ rủi ro {risk_profile.lower()} ({sidebar_risk_tolerance}%), thời gian đầu tư {sidebar_time_horizon.lower()} và số tiền {sidebar_investment_amount:,} VND, khuyến nghị {recommendation} cho {sidebar_symbol}. Nên đầu tư tối đa {max_position*100:.0f}% số tiền ({max_investment:,.0f} VND) và đặt stop-loss ở mức -{stop_loss_pct}% so với giá mua vào."""
+    
+    personalized_reasoning = f"""Dựa trên điểm số {score}/100, hồ sơ rủi ro {risk_profile.lower()} và thời gian đầu tư {sidebar_time_horizon.lower()}, tỷ trọng {max_position*100:.0f}% là phù hợp để cân bằng giữa cơ hội và rủi ro."""
+    
+    # Use personalized advice instead of AI advice
+    display_advice = personalized_advice
+    display_reasoning = personalized_reasoning
     
     # Display AI advice with investment-appropriate colors
     advice_color = '#28a745' if 'mua' in display_advice.lower() or 'buy' in display_advice.lower() else '#dc3545' if 'bán' in display_advice.lower() or 'sell' in display_advice.lower() else '#ffc107'
@@ -1180,14 +1266,43 @@ def display_investment_analysis(inv):
             formatted_text = ai_text.replace('. ', '.\n\n').replace(': ', ':\n\n')
             st.markdown(f"**🤖 AI Investment Analysis:**\n\n{formatted_text}", unsafe_allow_html=True)
         else:
-            # Show fallback analysis with REAL data
+            # Get sidebar data for personalized fallback analysis
+            sidebar_risk_tolerance = globals().get('risk_tolerance', 50)
+            sidebar_time_horizon = globals().get('time_horizon', 'Trung hạn')  
+            sidebar_investment_amount = globals().get('investment_amount', 100000000)
+            sidebar_symbol = globals().get('symbol', 'N/A')
+            
+            # Calculate risk profile from sidebar data
+            if sidebar_risk_tolerance <= 30:
+                risk_profile = "Thận trọng"
+                max_position = 0.05
+                stop_loss_pct = 5
+            elif sidebar_risk_tolerance <= 70:
+                risk_profile = "Cân bằng"
+                max_position = 0.10
+                stop_loss_pct = 8
+            else:
+                risk_profile = "Mạo hiểm"
+                max_position = 0.20
+                stop_loss_pct = 12
+            
+            max_investment = sidebar_investment_amount * max_position
+            
+            # Show fallback analysis with REAL sidebar data
             st.markdown(f"""
-            **💼 Phân tích đầu tư chi tiết:**
+            **💼 Phân tích đầu tư cho {sidebar_symbol}:**
             - Khuyến nghị: {recommendation} (Điểm: {score}/100)
             - Độ tin cậy: {confidence*100:.0f}%
             - Giá hiện tại: {inv_data['current_price']:,.2f} VND
             - Giá mục tiêu: {inv_data['target_price']:,.2f} VND
             - Tiềm năng tăng: {inv_data['upside_potential']:+.1f}%
+            
+            **👤 Hồ sơ đầu tư của bạn:**
+            - Hồ sơ rủi ro: {risk_profile} ({sidebar_risk_tolerance}%)
+            - Thời gian đầu tư: {sidebar_time_horizon}
+            - Số tiền đầu tư: {sidebar_investment_amount:,} VND
+            - Tỷ trọng khuyến nghị: {max_position*100:.0f}% ({max_investment:,.0f} VND)
+            - Stop-loss khuyến nghị: {stop_loss_pct}%
             
             **📊 Chỉ số tài chính thực tế:**
             - P/E Ratio: {inv_data['pe_ratio']:.2f if inv_data['pe_ratio'] > 0 else 'N/A'}
@@ -1197,23 +1312,41 @@ def display_investment_analysis(inv):
             - Beta: {inv_data['beta']:.2f}
             - Khối lượng: {inv_data['volume']:,}
             
-            **💡 Đánh giá định giá:**
-            Dựa trên phân tích tổng hợp với điểm số {score}/100, cổ phiếu đang ở mức định giá {"rất hấp dẫn" if score >= 80 else "hấp dẫn" if score >= 70 else "hợp lý" if score >= 60 else "cao" if score >= 40 else "rất cao"}.
-            Nhà đầu tư nên xem xét mức độ rủi ro cá nhân và thời gian đầu tư.
+            **💡 Khuyến nghị đầu tư cá nhân hóa:**
+            Với hồ sơ rủi ro {risk_profile.lower()}, khuyến nghị {recommendation} cho {sidebar_symbol}:
+            - Đầu tư tối đa {max_position*100:.0f}% số tiền ({max_investment:,.0f} VND)
+            - Đặt stop-loss ở mức -{stop_loss_pct}% so với giá mua vào
+            - Cổ phiếu đang ở mức định giá {"rất hấp dẫn" if score >= 80 else "hấp dẫn" if score >= 70 else "hợp lý" if score >= 60 else "cao" if score >= 40 else "rất cao"}
+            - Phù hợp với thời gian đầu tư {sidebar_time_horizon.lower()} và hồ sơ rủi ro {risk_profile.lower()}
             """)
         
         if inv.get('enhanced_recommendation'):
             enhanced_rec = inv['enhanced_recommendation']
             if enhanced_rec != recommendation:
                 st.info(f"🎯 Khuyến nghị AI nâng cao: {enhanced_rec}")
+        
+        # Show personalized investment strategy
+        sidebar_risk_tolerance = globals().get('risk_tolerance', 50)
+        sidebar_time_horizon = globals().get('time_horizon', 'Trung hạn')  
+        sidebar_investment_amount = globals().get('investment_amount', 100000000)
+        
+        if sidebar_risk_tolerance <= 30:
+            strategy = "Bảo toàn vốn và thu nhập ổn định"
+        elif sidebar_risk_tolerance <= 70:
+            strategy = "Cân bằng giữa tăng trưởng và ổn định"
+        else:
+            strategy = "Tăng trưởng cao và chấp nhận rủi ro"
+        
+        st.markdown(f"**🎯 Chiến lược đầu tư cá nhân hóa:** {strategy}")
+        st.markdown(f"**💰 Quản lý danh mục:** {sidebar_investment_amount:,} VND cho {sidebar_time_horizon.lower()}")
     
 
     # Show risk-adjusted analysis using REAL sidebar data
     with st.expander("🎯 Phân tích theo hồ sơ rủi ro", expanded=True):
         # Get current data from sidebar (passed from main scope)
-        sidebar_risk_tolerance = risk_tolerance
-        sidebar_time_horizon = time_horizon  
-        sidebar_investment_amount = investment_amount
+        sidebar_risk_tolerance = globals().get('risk_tolerance', 50)
+        sidebar_time_horizon = globals().get('time_horizon', 'Trung hạn')  
+        sidebar_investment_amount = globals().get('investment_amount', 100000000)
         
         # Calculate risk profile from sidebar data
         if sidebar_risk_tolerance <= 30:
@@ -1253,7 +1386,7 @@ def display_investment_analysis(inv):
         
         # Show personalized investment recommendations based on sidebar data
         st.subheader("💡 Khuyến nghị đầu tư cá nhân hóa:")
-        st.write(f"• Tỷ trọng tối đa: {max_position*100:.0f}% danh mục ({max_investment:,.2f} VND)")
+        st.write(f"• Tỷ trọng tối đa: {max_position*100:.0f}% danh mục ({max_investment:,.0f} VND)")
         st.write(f"• Stop-loss: {stop_loss_pct}% để kiểm soát rủi ro")
         if sidebar_time_horizon.startswith('Dài hạn'):
             st.write("• Phù hợp với chiến lược mua và giữ dài hạn")
@@ -1631,7 +1764,9 @@ with tab1:
             with st.spinner("🚀 6 AI Agents đang phân tích..."):
                 loop = asyncio.new_event_loop()
                 asyncio.set_event_loop(loop)
-                result = loop.run_until_complete(main_agent.analyze_stock(symbol))
+                # Pass investment profile parameters to comprehensive analysis
+                time_horizon_clean = time_horizon.split(" (")[0] if "(" in time_horizon else time_horizon
+                result = loop.run_until_complete(main_agent.analyze_stock(symbol, risk_tolerance, time_horizon_clean, investment_amount))
             
             if result.get('error'):
                 st.error(f"❌ {result['error']}")
@@ -1639,6 +1774,12 @@ with tab1:
                 # Display investment settings
                 st.info(f"⚙️ **Cấu hình:** {time_horizon} | Khả năng chấp nhận rủi ro: {risk_tolerance}% ({risk_label}) | Số tiền đầu tư: {investment_amount:,} VND")
 
+                # Pass sidebar data to global scope for display functions
+                globals()['symbol'] = symbol
+                globals()['risk_tolerance'] = risk_tolerance
+                globals()['time_horizon'] = time_horizon
+                globals()['investment_amount'] = investment_amount
+                
                 # Display comprehensive results with real data
                 loop = asyncio.new_event_loop()
                 asyncio.set_event_loop(loop)
@@ -1664,10 +1805,15 @@ with tab1:
                 # Pass sidebar parameters to risk assessment
                 time_horizon_clean = time_horizon.split(" (")[0] if "(" in time_horizon else time_horizon
                 risk = loop.run_until_complete(asyncio.to_thread(
-                    main_agent.risk_expert.assess_risk_enhanced,
+                    main_agent.risk_expert.assess_risk,
                     symbol, risk_tolerance, time_horizon_clean, investment_amount
                 ))
                 loop.close()
+            # Pass sidebar data to display function
+            globals()['symbol'] = symbol
+            globals()['risk_tolerance'] = risk_tolerance
+            globals()['time_horizon'] = time_horizon
+            globals()['investment_amount'] = investment_amount
             display_risk_assessment(risk)
     elif invest_btn:
         with results_container:
@@ -1677,10 +1823,15 @@ with tab1:
                 # Pass sidebar parameters to investment analysis
                 time_horizon_clean = time_horizon.split(" (")[0] if "(" in time_horizon else time_horizon
                 inv = loop.run_until_complete(asyncio.to_thread(
-                    main_agent.investment_expert.analyze_stock_enhanced,
+                    main_agent.investment_expert.analyze_stock,
                     symbol, risk_tolerance, time_horizon_clean, investment_amount
                 ))
                 loop.close()
+            # Pass sidebar data to display function
+            globals()['symbol'] = symbol
+            globals()['risk_tolerance'] = risk_tolerance
+            globals()['time_horizon'] = time_horizon
+            globals()['investment_amount'] = investment_amount
             display_investment_analysis(inv)
     elif calendar_predict_btn:
         with results_container:

@@ -30,30 +30,7 @@ class RiskExpert:
                 self._vn_api = None
         return self._vn_api
     
-    def assess_risk_enhanced(self, symbol: str, risk_tolerance: int = 50, time_horizon: str = "Trung hạn", investment_amount: int = 100000000):
-        """Enhanced risk assessment with investment profile parameters"""
-        try:
-            # Get base risk assessment
-            base_risk = self.assess_risk(symbol)
-            
-            if base_risk.get('error'):
-                return base_risk
-            
-            # Adjust risk assessment based on investment profile
-            adjusted_risk = self._adjust_risk_for_profile(base_risk, risk_tolerance, time_horizon, investment_amount)
-            
-            # Add investment profile context
-            adjusted_risk['investment_profile'] = {
-                'risk_tolerance': risk_tolerance,
-                'time_horizon': time_horizon,
-                'investment_amount': investment_amount,
-                'risk_profile': self._get_risk_profile_name(risk_tolerance)
-            }
-            
-            return adjusted_risk
-            
-        except Exception as e:
-            return {'error': f'Enhanced risk assessment failed: {str(e)}'}
+
     
     def _adjust_risk_for_profile(self, base_risk: dict, risk_tolerance: int, time_horizon: str, investment_amount: int):
         """Adjust risk assessment based on investment profile"""
@@ -137,8 +114,15 @@ class RiskExpert:
         else:
             return 180
     
-    def assess_risk(self, symbol: str):
+    def assess_risk(self, symbol: str, risk_tolerance: int = 50, time_horizon: str = "Trung hạn", investment_amount: int = 100000000):
         try:
+            print(f"🔍 Starting risk assessment for {symbol} with profile: {risk_tolerance}% risk, {time_horizon}, {investment_amount:,} VND...")
+            
+            # Store current parameters for AI analysis
+            self._current_risk_tolerance = risk_tolerance
+            self._current_time_horizon = time_horizon
+            self._current_investment_amount = investment_amount
+            
             # Get VN API instance
             vn_api = self._get_vn_api()
             
@@ -369,6 +353,19 @@ class RiskExpert:
             print(f"❌ Critical error in risk assessment for {symbol}: {e}")
             base_risk_analysis = self._get_fallback_risk(symbol)
         
+        # Add investment profile to base analysis before AI enhancement
+        if base_risk_analysis and "error" not in base_risk_analysis:
+            # Add investment profile context
+            base_risk_analysis['investment_profile'] = {
+                'risk_tolerance': risk_tolerance,
+                'time_horizon': time_horizon,
+                'investment_amount': investment_amount,
+                'risk_profile': self._get_risk_profile_name(risk_tolerance)
+            }
+            
+            # Adjust risk assessment based on investment profile
+            base_risk_analysis = self._adjust_risk_for_profile(base_risk_analysis, risk_tolerance, time_horizon, investment_amount)
+        
         # Enhance with AI analysis if available
         if base_risk_analysis and "error" not in base_risk_analysis and self.ai_agent:
             try:
@@ -495,43 +492,28 @@ class RiskExpert:
         return True
     
     def _get_ai_risk_analysis(self, symbol: str, base_analysis: dict):
-        """Get AI-enhanced risk analysis with REAL adjustments"""
+        """Get AI-enhanced risk analysis with DIVERSE advice based on profile"""
         try:
-            # Get investment profile data if available
-            investment_profile = base_analysis.get('investment_profile', {})
-            risk_tolerance = investment_profile.get('risk_tolerance', 50)
-            time_horizon = investment_profile.get('time_horizon', 'Trung hạn')
-            investment_amount = investment_profile.get('investment_amount', 100000000)
-            risk_profile = investment_profile.get('risk_profile', 'Cân bằng')
+            # Get investment profile data from the assess_risk call parameters
+            risk_tolerance = getattr(self, '_current_risk_tolerance', 50)
+            time_horizon = getattr(self, '_current_time_horizon', 'Trung hạn')
+            investment_amount = getattr(self, '_current_investment_amount', 100000000)
             
-            # Prepare context for AI analysis with investment profile
-            context = f"""
-Bạn là chuyên gia quản lý rủi ro. Hãy phân tích rủi ro cổ phiếu {symbol} dựa trên hồ sơ đầu tư:
-
-HỒ SƠ ĐẦU TƯ:
-- Hồ sơ rủi ro: {risk_profile} ({risk_tolerance}%)
-- Thời gian đầu tư: {time_horizon}
-- Số tiền đầu tư: {investment_amount:,} VND
-
-DỮ LIỆU RỦI RO:
-- Mức rủi ro: {base_analysis.get('risk_level', 'MEDIUM')}
-- Volatility: {base_analysis.get('volatility', 25)}%
-- Max Drawdown: {base_analysis.get('max_drawdown', -15)}%
-- Beta: {base_analysis.get('beta', 1.0)}
-- VaR 95%: {base_analysis.get('var_95', 8)}%
-- Risk Score: {base_analysis.get('risk_score', 5)}/10
-
-YÊU CẦU DỰA TRÊN HỒ SƠ:
-1. Đánh giá rủi ro phù hợp với hồ sơ {risk_profile}
-2. Khuyến nghị tỷ trọng và stop-loss cho {time_horizon}
-3. Cách quản lý rủi ro với số tiền {investment_amount:,} VND
-4. Lời khuyên cụ thể cho nhà đầu tư {risk_profile}
-
-Trả lời ngắn gọn, thực tế cho nhà đầu tư Việt Nam.
-
-ADVICE: [lời khuyên quản lý rủi ro dựa trên hồ sơ]
-REASONING: [lý do và cách thực hiện phù hợp với hồ sơ]
-"""
+            # Calculate risk profile name
+            if risk_tolerance <= 30:
+                risk_profile = "Thận trọng"
+            elif risk_tolerance <= 70:
+                risk_profile = "Cân bằng"
+            else:
+                risk_profile = "Mạo hiểm"
+            
+            # Calculate position sizing based on actual parameters
+            max_position = self._calculate_max_position(risk_tolerance, investment_amount)
+            stop_loss_pct = self._calculate_stop_loss(risk_tolerance, time_horizon)
+            max_investment = investment_amount * max_position
+            
+            # Create DIVERSE context based on profile combination
+            context = self._create_diverse_risk_context(symbol, base_analysis, risk_tolerance, time_horizon, investment_amount, risk_profile, max_position, stop_loss_pct, max_investment)
             
             # Get AI analysis
             ai_result = self.ai_agent.generate_with_fallback(context, 'risk_assessment', max_tokens=400)
@@ -540,7 +522,11 @@ REASONING: [lý do và cách thực hiện phù hợp với hồ sơ]
                 # Parse AI response for advice and reasoning
                 ai_advice, ai_reasoning = self._parse_ai_advice(ai_result['response'])
                 
-                # Parse AI response for actual adjustments (fallback to existing method)
+                # If AI doesn't provide diverse enough response, create fallback
+                if not ai_advice or len(ai_advice) < 50:
+                    ai_advice, ai_reasoning = self._create_diverse_fallback_advice(symbol, base_analysis, risk_tolerance, time_horizon, investment_amount, max_position, stop_loss_pct)
+                
+                # Parse AI response for actual adjustments
                 ai_adjustments = self._parse_ai_risk_adjustments(ai_result['response'])
                 
                 # Apply AI adjustments to base analysis
@@ -562,10 +548,24 @@ REASONING: [lý do và cách thực hiện phù hợp với hồ sơ]
                     'stop_loss_recommendation': ai_adjustments.get('stop_loss', 10)
                 }
             else:
-                return {'ai_enhanced': False, 'ai_error': ai_result.get('error', 'AI not available')}
+                # Create diverse fallback advice
+                ai_advice, ai_reasoning = self._create_diverse_fallback_advice(symbol, base_analysis, risk_tolerance, time_horizon, investment_amount, max_position, stop_loss_pct)
+                return {
+                    'ai_enhanced': False, 
+                    'ai_error': ai_result.get('error', 'AI not available'),
+                    'ai_advice': ai_advice,
+                    'ai_reasoning': ai_reasoning
+                }
                 
         except Exception as e:
-            return {'ai_enhanced': False, 'ai_error': str(e)}
+            # Create diverse fallback advice even on error
+            ai_advice, ai_reasoning = self._create_diverse_fallback_advice(symbol, base_analysis, getattr(self, '_current_risk_tolerance', 50), getattr(self, '_current_time_horizon', 'Trung hạn'), getattr(self, '_current_investment_amount', 100000000), 0.1, 10)
+            return {
+                'ai_enhanced': False, 
+                'ai_error': str(e),
+                'ai_advice': ai_advice,
+                'ai_reasoning': ai_reasoning
+            }
     
     def _parse_ai_risk_adjustments(self, ai_response: str):
         """Parse AI response for risk adjustments"""
@@ -621,6 +621,108 @@ REASONING: [lý do và cách thực hiện phù hợp với hồ sơ]
             print(f"⚠️ AI risk adjustment parsing failed: {e}")
             
         return adjustments
+    
+    def _create_diverse_risk_context(self, symbol, base_analysis, risk_tolerance, time_horizon, investment_amount, risk_profile, max_position, stop_loss_pct, max_investment):
+        """Create diverse context based on specific profile combination"""
+        volatility = base_analysis.get('volatility', 25)
+        risk_level = base_analysis.get('risk_level', 'MEDIUM')
+        
+        # Create different contexts based on profile combinations
+        if risk_tolerance <= 30:  # Conservative
+            if "Ngắn hạn" in time_horizon:
+                focus = "bảo toàn vốn và thanh khoản cao"
+                strategy = "ưu tiên blue-chip, tránh biến động mạnh"
+            elif "Dài hạn" in time_horizon:
+                focus = "tăng trưởng ổn định với cổ tức"
+                strategy = "đầu tư vào cổ phiếu có cổ tức cao, tăng trưởng bền vững"
+            else:
+                focus = "cân bằng giữa an toàn và tăng trưởng nhẹ"
+                strategy = "phân bổ 70% blue-chip, 30% cổ phiếu tăng trưởng ổn định"
+        elif risk_tolerance >= 70:  # Aggressive
+            if "Ngắn hạn" in time_horizon:
+                focus = "tối đa hóa lợi nhuận trong thời gian ngắn"
+                strategy = "có thể chấp nhận biến động cao để đạt mục tiêu nhanh"
+            elif "Dài hạn" in time_horizon:
+                focus = "tăng trưởng mạnh với khả năng chịu rủi ro cao"
+                strategy = "tập trung vào cổ phiếu tăng trưởng, công nghệ, mid-cap"
+            else:
+                focus = "cân bằng giữa tăng trưởng và rủi ro có kiểm soát"
+                strategy = "60% growth stocks, 40% established companies"
+        else:  # Balanced
+            if "Ngắn hạn" in time_horizon:
+                focus = "tăng trưởng vừa phải với rủi ro kiểm soát"
+                strategy = "đa dạng hóa giữa các nhóm cổ phiếu"
+            elif "Dài hạn" in time_horizon:
+                focus = "tăng trưởng dài hạn với rủi ro cân bằng"
+                strategy = "kết hợp cổ phiếu tăng trưởng và cổ tức"
+            else:
+                focus = "cân bằng tối ưu giữa rủi ro và lợi nhuận"
+                strategy = "phân bổ đều giữa các loại tài sản"
+        
+        return f"""
+Bạn là chuyên gia quản lý rủi ro cho nhà đầu tư {risk_profile}. Phân tích rủi ro {symbol}:
+
+HỒ SƠ ĐẦU TƯ CỤ THỂ:
+- Mức độ rủi ro: {risk_tolerance}% ({risk_profile})
+- Thời gian: {time_horizon} - {focus}
+- Vốn đầu tư: {investment_amount:,} VND
+- Chiến lược: {strategy}
+
+DỮ LIỆU RỦI RO {symbol}:
+- Risk Level: {risk_level}, Volatility: {volatility:.1f}%
+- Max Drawdown: {base_analysis.get('max_drawdown', -15):.1f}%
+- Beta: {base_analysis.get('beta', 1.0):.3f}
+
+KHUYẾN NGHỊ TÍNH TOÁN:
+- Tỷ trọng tối đa: {max_position*100:.0f}% = {max_investment:,.0f} VND
+- Stop-loss: {stop_loss_pct:.0f}%
+
+Yêu cầu phân tích CỤ THỂ cho hồ sơ {risk_profile} + {time_horizon}:
+
+ADVICE: [khuyến nghị cụ thể cho {risk_profile} với {time_horizon}]
+REASONING: [giải thích tại sao phù hợp với {risk_tolerance}% risk + {investment_amount:,} VND]
+"""
+    
+    def _create_diverse_fallback_advice(self, symbol, base_analysis, risk_tolerance, time_horizon, investment_amount, max_position, stop_loss_pct):
+        """Create diverse fallback advice based on profile"""
+        risk_level = base_analysis.get('risk_level', 'MEDIUM')
+        volatility = base_analysis.get('volatility', 25)
+        
+        # Create profile-specific advice
+        if risk_tolerance <= 30:  # Conservative
+            if "Ngắn hạn" in time_horizon:
+                advice = f"Với hồ sơ thận trọng + ngắn hạn: Chỉ đầu tư {max_position*100:.0f}% ({investment_amount * max_position:,.0f} VND) vào {symbol}. Ưu tiên bảo toàn vốn, stop-loss chặt {stop_loss_pct:.0f}%."
+                reasoning = f"Volatility {volatility:.1f}% của {symbol} cần quản lý cẩn thận cho nhà đầu tư thận trọng. Thời gian ngắn không cho phép phục hồi từ tổn thất lớn."
+            elif "Dài hạn" in time_horizon:
+                advice = f"Hồ sơ thận trọng + dài hạn: {symbol} phù hợp với {max_position*100:.0f}% danh mục ({investment_amount * max_position:,.0f} VND). Tập trung vào cổ tức và tăng trưởng ổn định."
+                reasoning = f"Thời gian dài hạn giúp làm mịn volatility {volatility:.1f}%. Risk level {risk_level} chấp nhận được với chiến lược buy-and-hold."
+            else:
+                advice = f"Hồ sơ thận trọng + trung hạn: Đầu tư thận trọng {max_position*100:.0f}% vào {symbol} ({investment_amount * max_position:,.0f} VND). Theo dõi sát, sẵn sàng cắt lỗ {stop_loss_pct:.0f}%."
+                reasoning = f"Cân bằng giữa thời gian và rủi ro. Volatility {volatility:.1f}% cần monitoring thường xuyên với hồ sơ thận trọng."
+        
+        elif risk_tolerance >= 70:  # Aggressive
+            if "Ngắn hạn" in time_horizon:
+                advice = f"Hồ sơ mạo hiểm + ngắn hạn: Có thể đầu tư tối đa {max_position*100:.0f}% vào {symbol} ({investment_amount * max_position:,.0f} VND). Chấp nhận volatility cao để tối đa hóa lợi nhuận."
+                reasoning = f"Với risk tolerance {risk_tolerance}%, volatility {volatility:.1f}% của {symbol} là cơ hội. Stop-loss rộng {stop_loss_pct:.0f}% cho phép cổ phiếu dao động."
+            elif "Dài hạn" in time_horizon:
+                advice = f"Hồ sơ mạo hiểm + dài hạn: {symbol} là lựa chọn tốt với {max_position*100:.0f}% danh mục ({investment_amount * max_position:,.0f} VND). Tập trung vào tiềm năng tăng trưởng dài hạn."
+                reasoning = f"Kết hợp risk tolerance {risk_tolerance}% và thời gian dài hạn tạo lợi thế. Volatility {volatility:.1f}% sẽ được làm mịn theo thời gian."
+            else:
+                advice = f"Hồ sơ mạo hiểm + trung hạn: Đầu tư tích cực {max_position*100:.0f}% vào {symbol} ({investment_amount * max_position:,.0f} VND). Cân bằng giữa tăng trưởng và kiểm soát rủi ro."
+                reasoning = f"Risk tolerance {risk_tolerance}% cho phép chấp nhận volatility {volatility:.1f}%. Thời gian trung hạn đủ để tận dụng chu kỳ thị trường."
+        
+        else:  # Balanced
+            if "Ngắn hạn" in time_horizon:
+                advice = f"Hồ sơ cân bằng + ngắn hạn: Đầu tư vừa phải {max_position*100:.0f}% vào {symbol} ({investment_amount * max_position:,.0f} VND). Cân bằng giữa cơ hội và rủi ro."
+                reasoning = f"Risk tolerance {risk_tolerance}% phù hợp với volatility {volatility:.1f}%. Thời gian ngắn cần cân bằng tốt giữa lợi nhuận và an toàn."
+            elif "Dài hạn" in time_horizon:
+                advice = f"Hồ sơ cân bằng + dài hạn: {symbol} phù hợp với {max_position*100:.0f}% danh mục ({investment_amount * max_position:,.0f} VND). Tối ưu hóa risk-adjusted return."
+                reasoning = f"Kết hợp tốt giữa risk tolerance {risk_tolerance}% và thời gian dài hạn. Volatility {volatility:.1f}% có thể quản lý được với chiến lược dài hạn."
+            else:
+                advice = f"Hồ sơ cân bằng + trung hạn: Đầu tư cân bằng {max_position*100:.0f}% vào {symbol} ({investment_amount * max_position:,.0f} VND). Đa dạng hóa để tối ưu rủi ro."
+                reasoning = f"Risk tolerance {risk_tolerance}% và thời gian trung hạn tạo sự cân bằng tối ưu. Volatility {volatility:.1f}% nằm trong ngưỡng chấp nhận được."
+        
+        return advice, reasoning
     
     def _parse_ai_advice(self, ai_response: str):
         """Parse AI response for advice and reasoning"""

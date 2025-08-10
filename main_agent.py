@@ -132,13 +132,13 @@ class MainAgent:
             return False
     
     @handle_async_errors(default_return={"error": "Lỗi hệ thống khi phân tích cổ phiếu"})
-    async def analyze_stock(self, symbol: str):
-        """Phân tích toàn diện một mã cổ phiếu"""
+    async def analyze_stock(self, symbol: str, risk_tolerance: int = 50, time_horizon: str = "Trung hạn", investment_amount: int = 100000000):
+        """Phân tích toàn diện một mã cổ phiếu với hồ sơ đầu tư"""
         if not symbol or not validate_symbol(symbol):
             return {"error": "Mã cổ phiếu không hợp lệ"}
             
         symbol = symbol.upper().strip()
-        logger.info(f"Starting comprehensive analysis for {symbol}")
+        logger.info(f"Starting comprehensive analysis for {symbol} with profile: {risk_tolerance}% risk, {time_horizon}, {investment_amount:,} VND")
         
         tasks = {}
         results = {"symbol": symbol}
@@ -156,15 +156,19 @@ class MainAgent:
                 if self._is_valid_international_symbol(symbol):
                     logger.info(f"{symbol} is international stock, using international APIs")
                     tasks['ticker_news'] = run_in_threadpool(self._safe_get_ticker_news, symbol)
-                    tasks['investment_analysis'] = run_in_threadpool(self._safe_get_investment_analysis, symbol)
+                    tasks['investment_analysis'] = run_in_threadpool(self._safe_get_investment_analysis, symbol, risk_tolerance, time_horizon, investment_amount)
                     market_type = 'International'
                 else:
                     logger.warning(f"{symbol} is not a valid stock symbol")
                     return {"error": f"Mã {symbol} không hợp lệ hoặc không được hỗ trợ"}
 
-            # Các tác vụ chung cho cả hai thị trường
+            # Các tác vụ chung cho cả hai thị trường với investment profile
             tasks['price_prediction'] = run_in_threadpool(self._safe_get_price_prediction, symbol)
-            tasks['risk_assessment'] = run_in_threadpool(self._safe_get_risk_assessment, symbol)
+            tasks['risk_assessment'] = run_in_threadpool(self._safe_get_risk_assessment, symbol, risk_tolerance, time_horizon, investment_amount)
+            
+            # Add investment analysis for VN stocks too
+            if market_type == 'Vietnam':
+                tasks['investment_analysis'] = run_in_threadpool(self._safe_get_investment_analysis, symbol, risk_tolerance, time_horizon, investment_amount)
 
             # Thực thi tất cả các tác vụ song song
             task_results = await asyncio.gather(*tasks.values(), return_exceptions=True)
@@ -176,6 +180,14 @@ class MainAgent:
                     results[key] = self._get_error_fallback(key, symbol, result)
                 else:
                     results[key] = result
+            
+            # Add investment profile to results
+            results['investment_profile'] = {
+                'risk_tolerance': risk_tolerance,
+                'time_horizon': time_horizon,
+                'investment_amount': investment_amount,
+                'risk_profile': self._get_risk_profile_name(risk_tolerance)
+            }
             
             results['market_type'] = market_type
             results['analysis_timestamp'] = asyncio.get_event_loop().time()
@@ -244,8 +256,8 @@ class MainAgent:
                     tasks = [
                         self.vn_api.get_stock_data(symbol),
                         run_in_threadpool(self._safe_get_price_prediction, symbol),
-                        run_in_threadpool(self._safe_get_risk_assessment, symbol),
-                        run_in_threadpool(self._safe_get_investment_analysis, symbol),
+                        run_in_threadpool(self._safe_get_risk_assessment, symbol, 50, "Trung hạn", 100000000),
+                        run_in_threadpool(self._safe_get_investment_analysis, symbol, 50, "Trung hạn", 100000000),
                         self.get_detailed_stock_info(symbol),
                         run_in_threadpool(self._safe_get_ticker_news, symbol, 5)
                     ]
@@ -263,8 +275,8 @@ class MainAgent:
                     logger.info(f"Getting comprehensive international data for {symbol}")
                     tasks = [
                         run_in_threadpool(self._safe_get_price_prediction, symbol),
-                        run_in_threadpool(self._safe_get_investment_analysis, symbol),
-                        run_in_threadpool(self._safe_get_risk_assessment, symbol),
+                        run_in_threadpool(self._safe_get_investment_analysis, symbol, 50, "Trung hạn", 100000000),
+                        run_in_threadpool(self._safe_get_risk_assessment, symbol, 50, "Trung hạn", 100000000),
                         run_in_threadpool(self._safe_get_ticker_news, symbol, 5)
                     ]
                     results = await asyncio.gather(*tasks, return_exceptions=True)
@@ -341,17 +353,17 @@ class MainAgent:
             logger.error(f"Ticker news enhanced error: {e}")
             return {"error": f"Lỗi lấy tin tức cổ phiếu {symbol}: {str(e)}"}
     
-    def _safe_get_investment_analysis(self, symbol: str):
-        """Safely get investment analysis"""
+    def _safe_get_investment_analysis(self, symbol: str, risk_tolerance: int = 50, time_horizon: str = "Trung hạn", investment_amount: int = 100000000):
+        """Safely get investment analysis with profile parameters"""
         try:
-            return self.investment_expert.analyze_stock(symbol)
+            return self.investment_expert.analyze_stock(symbol, risk_tolerance, time_horizon, investment_amount)
         except Exception as e:
             return {"error": f"Lỗi phân tích đầu tư cho {symbol}: {str(e)}"}
     
-    def _safe_get_risk_assessment(self, symbol: str):
-        """Safely get risk assessment"""
+    def _safe_get_risk_assessment(self, symbol: str, risk_tolerance: int = 50, time_horizon: str = "Trung hạn", investment_amount: int = 100000000):
+        """Safely get risk assessment with profile parameters"""
         try:
-            return self.risk_expert.assess_risk(symbol)
+            return self.risk_expert.assess_risk(symbol, risk_tolerance, time_horizon, investment_amount)
         except Exception as e:
             return AgentErrorHandler.handle_risk_error(symbol, e)
     
@@ -440,5 +452,14 @@ class MainAgent:
     def display_price_chart(self, price_history, symbol):
         """Display price chart - delegate to stock_info"""
         return self.stock_info.display_price_chart(price_history, symbol)
+    
+    def _get_risk_profile_name(self, risk_tolerance: int) -> str:
+        """Get risk profile name from tolerance level"""
+        if risk_tolerance <= 30:
+            return "Thận trọng"
+        elif risk_tolerance <= 70:
+            return "Cân bằng"
+        else:
+            return "Mạo hiểm"
     
 
