@@ -22,6 +22,8 @@ class LSTMPricePredictor:
         self.scaler = MinMaxScaler(feature_range=(0, 1))
         self.model = None
         self.look_back = 60  # Use 60 days for better performance (modern approach)
+        self.model_cache = {}  # Cache trained models
+        self.model_cache_time = {}  # Track model training time
         
     def set_ai_agent(self, ai_agent):
         """Set AI agent for enhanced predictions"""
@@ -88,19 +90,46 @@ class LSTMPricePredictor:
             print(f"❌ Model building failed: {e}")
             return None
     
-    def train_lstm_model(self, trainX, trainY, epochs=50, batch_size=32):
-        """Train LSTM model"""
+    def train_lstm_model(self, trainX, trainY, symbol, epochs=100, batch_size=32):
+        """Train LSTM model with caching and validation"""
         try:
             if not KERAS_AVAILABLE or trainX is None:
                 return None
+            
+            # Check if we have a cached model that's still fresh (< 24 hours)
+            cache_key = f"{symbol}_{trainX.shape[0]}_{trainX.shape[1]}"
+            current_time = datetime.now()
+            
+            if (cache_key in self.model_cache and 
+                cache_key in self.model_cache_time and
+                (current_time - self.model_cache_time[cache_key]).seconds < 86400):  # 24 hours
+                print(f"✅ Using cached model for {symbol}")
+                return self.model_cache[cache_key]
                 
             # Build model
             model = self.build_lstm_model((trainX.shape[1], 1))
             if model is None:
                 return None
             
-            # Train model with optimized parameters
-            model.fit(trainX, trainY, epochs=50, batch_size=32, verbose=0)  # Optimized for speed
+            # Enhanced training with validation split and early stopping
+            from tensorflow.keras.callbacks import EarlyStopping
+            early_stopping = EarlyStopping(monitor='val_loss', patience=10, restore_best_weights=True)
+            
+            # Train model with validation
+            history = model.fit(
+                trainX, trainY, 
+                epochs=epochs, 
+                batch_size=batch_size, 
+                validation_split=0.2,
+                callbacks=[early_stopping],
+                verbose=0
+            )
+            
+            # Cache the trained model
+            self.model_cache[cache_key] = model
+            self.model_cache_time[cache_key] = current_time
+            
+            print(f"✅ Model trained for {symbol} - Final loss: {history.history['loss'][-1]:.6f}")
             
             return model
             
@@ -122,7 +151,7 @@ class LSTMPricePredictor:
                 return self._fallback_prediction(symbol, days_ahead)
             
             # Train LSTM model with optimized parameters
-            model = self.train_lstm_model(trainX, trainY, epochs=50, batch_size=32)
+            model = self.train_lstm_model(trainX, trainY, symbol, epochs=100, batch_size=32)
             if model is None:
                 return self._fallback_prediction(symbol, days_ahead)
             
@@ -172,26 +201,53 @@ class LSTMPricePredictor:
             return self._fallback_prediction(symbol, days_ahead)
     
     def _get_price_data(self, symbol: str):
-        """Get historical price data"""
+        """Get historical price data with validation"""
         try:
+            price_data = None
+            
             # Try VNStock first for Vietnamese stocks
             if self.vn_api and self.vn_api.is_vn_stock(symbol):
                 from vnstock import Vnstock
                 stock_obj = Vnstock().stock(symbol=symbol, source='VCI')
                 end_date = datetime.now().strftime('%Y-%m-%d')
-                start_date = (datetime.now() - timedelta(days=730)).strftime('%Y-%m-%d')
+                # Get more historical data for better training (3 years)
+                start_date = (datetime.now() - timedelta(days=1095)).strftime('%Y-%m-%d')
                 hist_data = stock_obj.quote.history(start=start_date, end=end_date, interval='1D')
                 
                 if not hist_data.empty:
-                    return hist_data['close']
+                    price_data = hist_data['close']
             
             # Fallback to Yahoo Finance
-            import yfinance as yf
-            ticker = yf.Ticker(symbol)
-            hist = ticker.history(period="2y")
+            if price_data is None:
+                import yfinance as yf
+                ticker = yf.Ticker(symbol)
+                hist = ticker.history(period="3y")  # Get 3 years of data
+                
+                if not hist.empty:
+                    price_data = hist['Close']
             
-            if not hist.empty:
-                return hist['Close']
+            # Data validation and cleaning
+            if price_data is not None:
+                # Remove NaN values
+                price_data = price_data.dropna()
+                
+                # Check for sufficient data points
+                if len(price_data) < 200:
+                    print(f"⚠️ Insufficient data for {symbol}: {len(price_data)} points")
+                    return None
+                
+                # Check for data quality (no extreme outliers)
+                q1 = price_data.quantile(0.25)
+                q3 = price_data.quantile(0.75)
+                iqr = q3 - q1
+                lower_bound = q1 - 1.5 * iqr
+                upper_bound = q3 + 1.5 * iqr
+                
+                # Remove extreme outliers
+                price_data = price_data[(price_data >= lower_bound) & (price_data <= upper_bound)]
+                
+                print(f"✅ Retrieved {len(price_data)} valid data points for {symbol}")
+                return price_data
             
             return None
             
