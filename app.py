@@ -240,6 +240,50 @@ def display_price_prediction(pred, investment_amount=10000000, risk_tolerance=50
     # Prediction columns for different timeframes
     st.markdown("### 📊 Dự đoán giá theo thời gian")
     
+    # Compute target dates based on analysis time
+    from datetime import datetime, timedelta
+    analysis_ts = pred.get('analysis_date')
+    try:
+        analysis_dt = datetime.strptime(analysis_ts, '%Y-%m-%d %H:%M:%S') if analysis_ts else datetime.now()
+    except Exception:
+        analysis_dt = datetime.now()
+    date_fmt = '%d/%m/%Y'
+    
+    # Adjust to previous trading day if falls on weekend (Sat=5, Sun=6)
+    def adjust_to_trading_day(d: datetime) -> datetime:
+        while d.weekday() >= 5:  # 5=Saturday, 6=Sunday
+            d -= timedelta(days=1)
+        return d
+    
+    # Format date with Vietnamese weekday
+    VN_WEEKDAYS = ['Thứ Hai', 'Thứ Ba', 'Thứ Tư', 'Thứ Năm', 'Thứ Sáu', 'Thứ Bảy', 'Chủ Nhật']
+    def format_vn_date(d: datetime) -> str:
+        return f"{VN_WEEKDAYS[d.weekday()]}, {d.strftime(date_fmt)}"
+    
+    date_1d = format_vn_date(analysis_dt + timedelta(days=1))
+    date_1w = format_vn_date(analysis_dt + timedelta(days=7))
+    date_1m = format_vn_date(analysis_dt + timedelta(days=30))
+    date_3m = format_vn_date(analysis_dt + timedelta(days=90))
+    
+    # Helper: weekend-adjusted price (keep weekend date, use Friday's price)
+    def weekend_adjusted_price(days: int, base_price: float, bucket: str) -> float:
+        raw_date = analysis_dt + timedelta(days=days)
+        wd = raw_date.weekday()
+        weekend_delta = 1 if wd == 5 else 2 if wd == 6 else 0  # Sat=5, Sun=6
+        if weekend_delta == 0:
+            return base_price
+        adjusted_days = max(days - weekend_delta, 0)
+        if adjusted_days == 0:
+            return current_price
+        alt = predictions.get(bucket, {}).get(f"{adjusted_days}_days", {}).get('price')
+        return alt if alt else base_price
+    
+    # Weekend-aware display targets for top cards
+    target_1d_disp = weekend_adjusted_price(1, target_1d, 'short_term')
+    target_1w_disp = weekend_adjusted_price(7, target_1w, 'short_term')
+    target_1m_disp = weekend_adjusted_price(30, target_1m, 'medium_term')
+    target_3m_disp = weekend_adjusted_price(90, target_3m, 'long_term')
+    
     # Calculate percentage changes - ENHANCED with validation and consistency
     def safe_calculate_change(predicted_price, current_price):
         """Safely calculate percentage change with validation and consistency checks"""
@@ -268,10 +312,10 @@ def display_price_prediction(pred, investment_amount=10000000, risk_tolerance=50
         return raw_change
     
     # Calculate changes with enhanced validation and consistency checks
-    change_1d = safe_calculate_change(target_1d, current_price)
-    change_1w = safe_calculate_change(target_1w, current_price)
-    change_1m = safe_calculate_change(target_1m, current_price)
-    change_3m = safe_calculate_change(target_3m, current_price)
+    change_1d = safe_calculate_change(target_1d_disp, current_price)
+    change_1w = safe_calculate_change(target_1w_disp, current_price)
+    change_1m = safe_calculate_change(target_1m_disp, current_price)
+    change_3m = safe_calculate_change(target_3m_disp, current_price)
     
     # CONSISTENCY CHECK: Ensure changes make sense relative to each other
     changes = [change_1d, change_1w, change_1m, change_3m]
@@ -301,8 +345,9 @@ def display_price_prediction(pred, investment_amount=10000000, risk_tolerance=50
         <div style="background: {color_1d}; color: white; padding: 15px; border-radius: 10px; text-align: center; margin: 5px 0;">
             <div style="font-size: 1.5em; margin-bottom: 5px;">{icon_1d}</div>
             <h4 style="margin: 0; font-size: 16px;">1 NGÀY</h4>
-            <p style="margin: 5px 0; font-size: 18px; font-weight: bold;">{target_1d:,.2f} VND</p>
+            <p style="margin: 5px 0; font-size: 18px; font-weight: bold;">{target_1d_disp:,.2f} VND</p>
             <p style="margin: 0; font-size: 14px; opacity: 0.9;">{change_1d:+.2f}%</p>
+            <p style="margin: 4px 0; font-size: 12px; opacity: 0.9;">{date_1d}</p>
         </div>
         """, unsafe_allow_html=True)
     
@@ -321,8 +366,9 @@ def display_price_prediction(pred, investment_amount=10000000, risk_tolerance=50
         <div style="background: {color_1w}; color: white; padding: 15px; border-radius: 10px; text-align: center; margin: 5px 0;">
             <div style="font-size: 1.5em; margin-bottom: 5px;">{icon_1w}</div>
             <h4 style="margin: 0; font-size: 16px;">1 TUẦN</h4>
-            <p style="margin: 5px 0; font-size: 18px; font-weight: bold;">{target_1w:,.2f} VND</p>
+            <p style="margin: 5px 0; font-size: 18px; font-weight: bold;">{target_1w_disp:,.2f} VND</p>
             <p style="margin: 0; font-size: 14px; opacity: 0.9;">{change_1w:+.2f}%</p>
+            <p style="margin: 4px 0; font-size: 12px; opacity: 0.9;">{date_1w}</p>
         </div>
         """, unsafe_allow_html=True)
     
@@ -341,8 +387,9 @@ def display_price_prediction(pred, investment_amount=10000000, risk_tolerance=50
         <div style="background: {color_1m}; color: white; padding: 15px; border-radius: 10px; text-align: center; margin: 5px 0;">
             <div style="font-size: 1.5em; margin-bottom: 5px;">{icon_1m}</div>
             <h4 style="margin: 0; font-size: 16px;">1 THÁNG</h4>
-            <p style="margin: 5px 0; font-size: 18px; font-weight: bold;">{target_1m:,.2f} VND</p>
+            <p style="margin: 5px 0; font-size: 18px; font-weight: bold;">{target_1m_disp:,.2f} VND</p>
             <p style="margin: 0; font-size: 14px; opacity: 0.9;">{change_1m:+.2f}%</p>
+            <p style="margin: 4px 0; font-size: 12px; opacity: 0.9;">{date_1m}</p>
         </div>
         """, unsafe_allow_html=True)
     
@@ -361,8 +408,9 @@ def display_price_prediction(pred, investment_amount=10000000, risk_tolerance=50
         <div style="background: {color_3m}; color: white; padding: 15px; border-radius: 10px; text-align: center; margin: 5px 0;">
             <div style="font-size: 1.5em; margin-bottom: 5px;">{icon_3m}</div>
             <h4 style="margin: 0; font-size: 16px;">3 THÁNG</h4>
-            <p style="margin: 5px 0; font-size: 18px; font-weight: bold;">{target_3m:,.2f} VND</p>
+            <p style="margin: 5px 0; font-size: 18px; font-weight: bold;">{target_3m_disp:,.2f} VND</p>
             <p style="margin: 0; font-size: 14px; opacity: 0.9;">{change_3m:+.2f}%</p>
+            <p style="margin: 4px 0; font-size: 12px; opacity: 0.9;">{date_3m}</p>
         </div>
         """, unsafe_allow_html=True)
     
@@ -568,14 +616,35 @@ def display_price_prediction(pred, investment_amount=10000000, risk_tolerance=50
                                 # Get values with validation
                                 predicted_price = values.get('price', 0)
                                 stored_change_percent = values.get('change_percent', 0)
+
+                                # Determine period days and weekend adjustment for display price
+                                try:
+                                    days_count_calc = int(period.split('_')[0]) if period.endswith('_days') else None
+                                except Exception:
+                                    days_count_calc = None
+                                weekend_delta = 0
+                                if days_count_calc is not None:
+                                    raw_dt = analysis_dt + timedelta(days=days_count_calc)
+                                    wd = raw_dt.weekday()
+                                    weekend_delta = 1 if wd == 5 else 2 if wd == 6 else 0
                                 
-                                # Enhanced recalculation with better validation
-                                if abs(stored_change_percent) < 0.1 and predicted_price != current_price and current_price > 0:
-                                    recalc_change = ((predicted_price - current_price) / current_price) * 100
+                                # Use Friday's price for weekend display (keep weekend date)
+                                display_price = predicted_price
+                                if weekend_delta > 0 and days_count_calc is not None:
+                                    adjusted_days = max(days_count_calc - weekend_delta, 0)
+                                    alt_price = data.get(f"{adjusted_days}_days", {}).get('price') if adjusted_days > 0 else current_price
+                                    display_price = alt_price if alt_price else predicted_price
+                                
+                                # Recompute display change with safety and scaling
+                                if current_price > 0:
+                                    recalc_change = ((display_price - current_price) / current_price) * 100
+                                else:
+                                    recalc_change = 0
+                                
+                                # Prefer recomputed change if stored is too small or weekend-adjusted
+                                if abs(stored_change_percent) < 0.1 or weekend_delta > 0:
                                     if abs(recalc_change) < 0.1:
-                                        # Force minimum meaningful change with time-based scaling
-                                        base_change = 0.8 if predicted_price > current_price else -0.8 if predicted_price < current_price else 0.4
-                                        # Scale based on time period
+                                        base_change = 0.8 if display_price > current_price else -0.8 if display_price < current_price else 0.4
                                         if '1_days' in period:
                                             display_change = base_change * 0.7
                                         elif '7_days' in period:
@@ -597,9 +666,18 @@ def display_price_prediction(pred, investment_amount=10000000, risk_tolerance=50
                                 
                                 st.metric(
                                     f"{period.replace('_', ' ')}",
-                                    f"{predicted_price:,.2f}",
+                                    f"{display_price:,.2f}",
                                     f"{display_change:+.1f}%"
                                 )
+                                
+                                # Show target date based on period days
+                                try:
+                                    days_count = int(period.split('_')[0]) if period.endswith('_days') else None
+                                except Exception:
+                                    days_count = None
+                                if days_count:
+                                    raw_target_dt = analysis_dt + timedelta(days=days_count)
+                                    st.caption(f"📅 {format_vn_date(raw_target_dt)}")
                                 
                                 # Show confidence interval if available (for LSTM)
                                 conf_int = values.get('confidence_interval', {})
@@ -839,327 +917,7 @@ def display_risk_assessment(risk):
     
 
 
-def display_calendar_prediction(pred, target_date, days_ahead):
-    """Display calendar-based prediction results with LSTM priority"""
-    if pred.get('error'):
-        st.error(f"❌ {pred['error']}")
-        return
-    
-    # Extract prediction data
-    current_price = pred.get('current_price', 0)
-    predicted_price = pred.get('predicted_price', current_price)
-    stored_change_percent = pred.get('change_percent', 0)
-    
-    # Apply same percentage fix as main prediction display
-    if abs(stored_change_percent) < 0.1 and predicted_price != current_price and current_price > 0:
-        recalc_change = ((predicted_price - current_price) / current_price) * 100
-        if abs(recalc_change) < 0.1:
-            change_percent = 0.5 if predicted_price > current_price else -0.5 if predicted_price < current_price else 0.2
-        else:
-            change_percent = recalc_change
-    else:
-        change_percent = stored_change_percent
-    confidence = pred.get('confidence', 50)
-    method_used = pred.get('method_used', 'Traditional')
-    
-    # Calendar insights
-    calendar_insights = pred.get('calendar_insights', {})
-    target_weekday = calendar_insights.get('target_weekday', 'N/A')
-    market_open = calendar_insights.get('market_open', True)
-    insights = calendar_insights.get('insights', [])
-    
-    # Interpolation info
-    interpolated = pred.get('interpolated_price', {})
-    interpolation_method = interpolated.get('interpolation_method', 'N/A')
-    based_on_points = interpolated.get('based_on_points', 'N/A')
-    
-    # Enhanced header with LSTM indication
-    header_color = "linear-gradient(135deg, #667eea 0%, #764ba2 100%)"
-    method_icon = "🧠" if 'LSTM' in method_used else "📊"
-    
-    if 'LSTM' in method_used:
-        header_color = "linear-gradient(135deg, #11998e 0%, #38ef7d 100%)"
-        method_subtitle = f"🧠 Neural Network Prediction • Confidence: {pred.get('lstm_confidence', confidence):.1f}%"
-    else:
-        method_subtitle = f"📊 Traditional Analysis • Confidence: {confidence:.1f}%"
-    
-    # Header with calendar info
-    st.markdown(f"""
-    <div style="background: {header_color}; color: white; padding: 2rem; border-radius: 15px; margin: 1rem 0; text-align: center;">
-        <h2 style="margin: 0; font-size: 2rem;">{method_icon} Dự đoán giá cho ngày {target_date.strftime('%d/%m/%Y')}</h2>
-        <p style="margin: 0.5rem 0; font-size: 1.2rem; opacity: 0.9;">{target_weekday} • {days_ahead} ngày từ hôm nay</p>
-        <p style="margin: 0; font-size: 1rem; opacity: 0.8;">{method_subtitle}</p>
-    </div>
-    """, unsafe_allow_html=True)
-    
-    # Market status warning
-    if not market_open:
-        st.warning("⚠️ Thị trường đóng cửa vào cuối tuần - Giá dự đoán cho phiên giao dịch tiếp theo")
-    
-    # Main prediction display
-    col1, col2, col3 = st.columns(3)
-    
-    with col1:
-        # Current price
-        st.markdown(f"""
-        <div style="background: #f8f9fa; padding: 1.5rem; border-radius: 10px; text-align: center; border-left: 4px solid #6c757d;">
-            <h4 style="color: #6c757d; margin-bottom: 0.5rem;">💰 Giá hiện tại</h4>
-            <h2 style="margin: 0; color: #2d3436;">{current_price:,.2f} VND</h2>
-            <p style="margin: 0.5rem 0 0 0; color: #636e72; font-size: 0.9rem;">Hôm nay</p>
-        </div>
-        """, unsafe_allow_html=True)
-    
-    with col2:
-        # Predicted price with color coding
-        if change_percent > 0:
-            color = "#28a745"
-            icon = "📈"
-            direction = "Tăng"
-        elif change_percent < 0:
-            color = "#dc3545"
-            icon = "📉"
-            direction = "Giảm"
-        else:
-            color = "#ffc107"
-            icon = "➡️"
-            direction = "Không đổi"
-        
-        st.markdown(f"""
-        <div style="background: {color}; color: white; padding: 1.5rem; border-radius: 10px; text-align: center;">
-            <h4 style="margin-bottom: 0.5rem; opacity: 0.9;">{icon} Giá dự đoán</h4>
-            <h2 style="margin: 0;">{predicted_price:,.2f} VND</h2>
-            <p style="margin: 0.5rem 0 0 0; opacity: 0.9; font-size: 0.9rem;">{target_date.strftime('%d/%m/%Y')}</p>
-        </div>
-        """, unsafe_allow_html=True)
-    
-    with col3:
-        # Change percentage
-        st.markdown(f"""
-        <div style="background: {color}22; padding: 1.5rem; border-radius: 10px; text-align: center; border-left: 4px solid {color};">
-            <h4 style="color: {color}; margin-bottom: 0.5rem;">{icon} Thay đổi</h4>
-            <h2 style="margin: 0; color: {color};">{change_percent:+.2f}%</h2>
-            <p style="margin: 0.5rem 0 0 0; color: {color}; font-size: 0.9rem; opacity: 0.8;">{direction}</p>
-        </div>
-        """, unsafe_allow_html=True)
-    
-    # Additional metrics
-    col1, col2, col3, col4 = st.columns(4)
-    
-    with col1:
-        confidence_value = pred.get('lstm_confidence', confidence)
-        st.metric("Độ tin cậy", f"{confidence_value:.1f}%")
-    with col2:
-        change_amount = predicted_price - current_price
-        st.metric("Thay đổi (VND)", f"{change_amount:+,.2f}")
-    with col3:
-        st.metric("Phương pháp nội suy", interpolation_method.replace('_', ' ').title())
-    with col4:
-        st.metric("Dựa trên điểm", based_on_points)
-    
-    # Calendar insights
-    if insights:
-        st.markdown("### 📅 Phân tích theo lịch")
-        
-        # Display insights in a nice grid
-        insight_cols = st.columns(min(len(insights), 3))
-        for i, insight in enumerate(insights):
-            with insight_cols[i % 3]:
-                # Determine insight color based on content
-                if any(word in insight.lower() for word in ['cao', 'tăng', 'rally']):
-                    insight_color = '#28a745'
-                    insight_bg = '#28a74522'
-                elif any(word in insight.lower() for word in ['thấp', 'giảm', 'rủi ro']):
-                    insight_color = '#dc3545'
-                    insight_bg = '#dc354522'
-                else:
-                    insight_color = '#6c5ce7'
-                    insight_bg = '#6c5ce722'
-                
-                st.markdown(f"""
-                <div style="background: {insight_bg}; border-left: 4px solid {insight_color}; padding: 1rem; border-radius: 8px; margin: 0.5rem 0;">
-                    <p style="margin: 0; color: {insight_color}; font-weight: 500; font-size: 0.9rem;">{insight}</p>
-                </div>
-                """, unsafe_allow_html=True)
-    
-    # Enhanced prediction data display with LSTM confidence intervals
-    with st.expander("📊 Chi tiết dự đoán đa khung thời gian", expanded=False):
-        predictions = pred.get('predictions', {})
-        if predictions:
-            for timeframe, data in predictions.items():
-                if data:
-                    st.subheader(f"{timeframe.replace('_', ' ').title()}")
-                    cols = st.columns(min(len(data), 4))
-                    for i, (period, values) in enumerate(data.items()):
-                        if i < 4:
-                            with cols[i]:
-                                # Enhanced display with confidence intervals for LSTM
-                                price = values.get('price', 0)
-                                stored_change_pct = values.get('change_percent', 0)
-                                
-                                # Apply same fix as main prediction display
-                                if abs(stored_change_pct) < 0.1 and price != current_price and current_price > 0:
-                                    recalc_change = ((price - current_price) / current_price) * 100
-                                    if abs(recalc_change) < 0.1:
-                                        display_change_pct = 0.5 if price > current_price else -0.5 if price < current_price else 0.2
-                                    else:
-                                        display_change_pct = recalc_change
-                                else:
-                                    display_change_pct = stored_change_pct
-                                
-                                st.metric(
-                                    f"{period.replace('_', ' ')}",
-                                    f"{price:,.2f}",
-                                    f"{display_change_pct:+.1f}%"
-                                )
-                                
-                                # Show LSTM confidence interval if available
-                                conf_int = values.get('confidence_interval', {})
-                                if conf_int and 'LSTM' in method_used:
-                                    lower = conf_int.get('lower', price)
-                                    upper = conf_int.get('upper', price)
-                                    st.caption(f"🧠 CI: {lower:,.2f} - {upper:,.2f}")
-        
-        # Show interpolation details if LSTM enhanced
-        if interpolated.get('lstm_smoothing'):
-            st.markdown("### 🧠 LSTM Enhanced Interpolation")
-            st.write(f"**Method:** {interpolation_method.replace('_', ' ').title()}")
-            st.write(f"**Based on:** {based_on_points}")
-            
-            conf_int = interpolated.get('confidence_interval', {})
-            if conf_int:
-                st.write(f"**Confidence Range:** {conf_int.get('lower', 0):,.2f} - {conf_int.get('upper', 0):,.2f} VND")
-                st.write(f"**Range Width:** {conf_int.get('range', 0):,.2f} VND")
-    
-    # Risk-adjusted analysis for the specific date using sidebar data
-    with st.expander("🎯 Phân tích rủi ro cho ngày dự đoán", expanded=False):
-        # Get current data from sidebar (passed from main scope) - FIXED to use globals
-        sidebar_risk_tolerance = globals().get('risk_tolerance', 50)
-        sidebar_time_horizon = globals().get('time_horizon', 'Trung hạn')  
-        sidebar_investment_amount = globals().get('investment_amount', 100000000)
-        
-        # Calculate risk profile from sidebar data
-        if sidebar_risk_tolerance <= 30:
-            risk_profile = "Thận trọng"
-            max_position = 0.05  # 5%
-            stop_loss_pct = 5
-        elif sidebar_risk_tolerance <= 70:
-            risk_profile = "Cân bằng"
-            max_position = 0.10  # 10%
-            stop_loss_pct = 8
-        else:
-            risk_profile = "Mạo hiểm"
-            max_position = 0.20  # 20%
-            stop_loss_pct = 12
-        
-        # Calculate po sition sizing from sidebar data
-        max_investment = sidebar_investment_amount * max_position
-        recommended_shares = int(max_investment / current_price) if current_price > 0 else 0
-        actual_investment = recommended_shares * current_price
-        stop_loss_price = current_price * (1 - stop_loss_pct / 100)
-        take_profit_price = current_price * 1.15  # 15% target
-        
-        col1, col2 = st.columns(2)
-        with col1:
-            st.metric("Hồ sơ rủi ro", f"{risk_profile} ({sidebar_risk_tolerance}%)")
-            st.metric("Thời gian đầu tư", sidebar_time_horizon.split(' (')[0])
-        with col2:
-            st.metric("Khuyến nghị mua", f"{recommended_shares:,} cổ")
-            st.metric("Số tiền đầu tư", f"{sidebar_investment_amount:,.0f} VND")
-        
-        # Risk management for the date
-        st.markdown("**🛡️ Quản lý rủi ro:**")
-        st.write(f"• Stop-loss: {stop_loss_price:,.2f} VND ({stop_loss_pct}%)")
-        st.write(f"• Take-profit: {take_profit_price:,.2f} VND (15%)")
-        st.write(f"• Tỷ trọng tối đa: {max_position*100:.0f}% danh mục ({max_investment:,.2f} VND)")
-    
-    # AI advice for the specific date
-    ai_advice = pred.get('ai_advice', '')
-    ai_reasoning = pred.get('ai_reasoning', '')
-    
-    if ai_advice or ai_reasoning:
-        st.markdown("### 🤖 Lời khuyên AI cho ngày dự đoán")
-        
-        advice_color = '#28a745' if 'mua' in ai_advice.lower() else '#dc3545' if 'bán' in ai_advice.lower() else '#6c5ce7'
-        
-        st.markdown(f"""
-        <div style="background: {advice_color}22; border-left: 4px solid {advice_color}; padding: 1.5rem; border-radius: 8px; margin: 1rem 0;">
-            <h4 style="color: {advice_color}; margin-bottom: 1rem;">💡 Khuyến nghị cho ngày {target_date.strftime('%d/%m/%Y')}</h4>
-            <p style="font-size: 1.1rem; margin-bottom: 1rem; font-weight: 500;">{ai_advice or 'Theo dõi biến động giá theo dự đoán'}</p>
-            <p style="color: #666; font-style: italic;"><strong>Lý do:</strong> {ai_reasoning or f'Dự đoán dựa trên phân tích {days_ahead} ngày tới'}</p>
-        </div>
-        """, unsafe_allow_html=True)
-    
-    # Show LSTM-specific analysis if available
-    if pred.get('lstm_calendar_analysis'):
-        with st.expander("🧠 Phân tích LSTM cho ngày dự đoán", expanded=False):
-            lstm_analysis = pred['lstm_calendar_analysis']
-            
-            col1, col2 = st.columns(2)
-            with col1:
-                st.metric("Độ tin cậy LSTM", f"{lstm_analysis.get('model_confidence', 0):.1f}%")
-                st.metric("Dữ liệu huấn luyện", f"{lstm_analysis.get('data_points_used', 0)} điểm")
-                st.metric("Look-back period", f"{lstm_analysis.get('look_back_period', 60)} ngày")
-            
-            with col2:
-                st.metric("Xu hướng LSTM", lstm_analysis.get('lstm_trend', 'neutral').title())
-                st.metric("Phù hợp với thời gian", lstm_analysis.get('lstm_suitability', 'Good')[:20] + "...")
-                
-                model_acc = lstm_analysis.get('model_accuracy', {})
-                overfitting_risk = model_acc.get('overfitting_risk', 'Unknown')
-                risk_color = "🔴" if overfitting_risk == "High" else "🟢"
-                st.metric("Overfitting Risk", f"{risk_color} {overfitting_risk}")
-            
-            # Calendar-specific LSTM note
-            calendar_note = lstm_analysis.get('calendar_note', '')
-            if calendar_note:
-                st.info(f"📅 **Lưu ý lịch:** {calendar_note}")
-            
-            # Model accuracy details
-            if model_acc:
-                st.markdown("**📊 Chi tiết độ chính xác:**")
-                st.write(f"• Train RMSE: {model_acc.get('train_rmse', 0):.4f}")
-                st.write(f"• Test RMSE: {model_acc.get('test_rmse', 0):.4f}")
-    
-    # Show method and data source info
-    st.markdown("---")
-    col1, col2, col3 = st.columns(3)
-    
-    with col1:
-        # Enhanced method display for LSTM
-        if 'LSTM' in method_used:
-            lstm_confidence = pred.get('lstm_confidence', 0)
-            st.success(f"🧠 **Phương pháp:** {method_used}")
-            st.caption(f"Độ tin cậy LSTM: {lstm_confidence:.1f}%")
-        else:
-            st.info(f"🔧 **Phương pháp:** {method_used}")
-            if pred.get('lstm_fallback_reason'):
-                st.caption(f"LSTM fallback: {pred['lstm_fallback_reason']}")
-    
-    with col2:
-        data_source = pred.get('data_source', 'Unknown')
-        st.info(f"📊 **Nguồn dữ liệu:** {data_source}")
-        
-        # Show prediction type
-        pred_type = pred.get('prediction_type', 'unknown')
-        if pred_type == 'lstm_calendar':
-            st.caption("🎯 LSTM Calendar Prediction")
-        elif pred_type == 'traditional_calendar':
-            st.caption("📊 Traditional Calendar Prediction")
-    
-    with col3:
-        analysis_date = pred.get('analysis_date', datetime.now().strftime('%Y-%m-%d %H:%M:%S'))
-        st.info(f"⏰ **Phân tích lúc:** {analysis_date}")
-        
-        # Show interpolation method if available
-        interpolated = pred.get('interpolated_price', {})
-        if interpolated.get('interpolation_method'):
-            method = interpolated['interpolation_method']
-            if method == 'lstm_enhanced':
-                st.caption("🧠 LSTM Enhanced Interpolation")
-            elif method == 'lstm_exact':
-                st.caption("🎯 LSTM Exact Match")
-            else:
-                st.caption(f"📊 {method.title()} Interpolation")
+
 
 def display_investment_analysis(inv):
     if inv.get('error'):
@@ -1806,43 +1564,7 @@ with tab1:
     with col4:
         invest_btn = st.button("💼 Chuyên gia đầu tư", use_container_width=True)
     
-    # Calendar-based prediction section
-    st.markdown("---")
-    st.markdown("### 📅 Dự đoán giá theo ngày cụ thể")
-    
-    col1, col2, col3 = st.columns(3)
-    
-    with col1:
-        target_date = st.date_input(
-            "Chọn ngày dự đoán",
-            value=datetime.now().date() + timedelta(days=1),
-            min_value=datetime.now().date(),
-            max_value=datetime.now().date() + timedelta(days=365),
-            help="Chọn ngày bạn muốn dự đoán giá cổ phiếu"
-        )
-    
-    with col2:
-        # Calculate days ahead
-        if hasattr(target_date, 'date'):
-            target_date_obj = target_date.date()
-        else:
-            target_date_obj = target_date
-        days_ahead = (target_date_obj - datetime.now().date()).days
-        st.metric("Số ngày từ hôm nay", f"{days_ahead} ngày")
-        
-        # Show weekday
-        weekday_names = ['Thứ 2', 'Thứ 3', 'Thứ 4', 'Thứ 5', 'Thứ 6', 'Thứ 7', 'Chủ nhật']
-        weekday = weekday_names[target_date.weekday()]
-        st.info(f"📅 {weekday}")
-    
-    with col3:
-        # Prediction button
-        calendar_predict_btn = st.button(
-            f"🧠 Dự đoán giá ngày {target_date.strftime('%d/%m/%Y')} (LSTM)",
-            type="secondary",
-            use_container_width=True,
-            help="Sử dụng LSTM Neural Network để dự đoán giá cho ngày cụ thể"
-        )
+
 
     # Results area
     results_container = st.container()
@@ -1922,24 +1644,7 @@ with tab1:
             globals()['time_horizon'] = time_horizon
             globals()['investment_amount'] = investment_amount
             display_investment_analysis(inv)
-    elif calendar_predict_btn:
-        with results_container:
-            with st.spinner(f"🔮 Đang dự đoán giá {symbol} cho ngày {target_date.strftime('%d/%m/%Y')}..."):
-                try:
-                    # Use the new calendar prediction method
-                    time_horizon_clean = time_horizon.split(" (")[0] if "(" in time_horizon else time_horizon
-                    pred = main_agent.price_predictor.predict_price_for_date(
-                        symbol, target_date, risk_tolerance, time_horizon_clean, investment_amount
-                    )
-                    
-                    if pred.get('error'):
-                        st.error(f"❌ {pred['error']}")
-                    else:
-                        # Display calendar-specific prediction
-                        display_calendar_prediction(pred, target_date, days_ahead)
-                        
-                except Exception as e:
-                    st.error(f"❌ Lỗi dự đoán: {str(e)}")
+
 
 # Tab 2: AI Chatbot
 with tab2:

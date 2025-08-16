@@ -282,7 +282,7 @@ class LSTMPricePredictor:
             
             # Short term (1, 3, 7 days) - higher confidence
             formatted_predictions['short_term'] = {
-                '1_day': {
+                '1_days': {
                     'price': round(float(predictions[0]), 2), 
                     'days': 1,
                     'confidence_interval': self._calculate_confidence_interval(predictions[0], 0.05)

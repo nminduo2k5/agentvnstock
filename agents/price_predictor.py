@@ -830,6 +830,10 @@ class PricePredictor:
                         predicted_price = current_price * (1 + (adjustment if total_change >= 0 else -adjustment))
                         total_change = (predicted_price - current_price) / current_price
                     
+                    # Harmonize with UI logic for consistent display in app.py
+                    predicted_price = self._apply_safe_change_logic(predicted_price, current_price)
+                    total_change = (predicted_price - current_price) / current_price
+                    
                     # Calculate final values
                     change_percent = round(total_change * 100, 2)
                     change_amount = round(predicted_price - current_price, 2)
@@ -1805,6 +1809,31 @@ REASONING: [giải thích ngắn]
         
         return total_change
     
+    def _apply_safe_change_logic(self, predicted_price, current_price):
+        """Align with app's '📊 Dự đoán giá theo thời gian' logic for consistent results.
+        Mirrors safe_calculate_change in app.py to ensure unified behavior.
+        """
+        # If invalid values, keep original
+        if current_price <= 0 or predicted_price <= 0:
+            return predicted_price
+        # Raw percent change
+        raw_change = ((predicted_price - current_price) / current_price) * 100.0
+        # Ensure meaningful minimum change
+        if abs(raw_change) < 0.1:
+            if predicted_price > current_price:
+                adjusted = 0.8
+            elif predicted_price < current_price:
+                adjusted = -0.8
+            else:
+                adjusted = 0.4
+            return current_price * (1 + adjusted / 100.0)
+        # Amplify very small changes
+        if abs(raw_change) < 0.3:
+            amplified_change = raw_change * 2.5
+            amplified_change = max(-50.0, min(50.0, amplified_change))
+            return current_price * (1 + amplified_change / 100.0)
+        return predicted_price
+    
     def _calculate_rsi_adjustment(self, rsi, days):
         """Điều chỉnh dựa trên RSI"""
         if rsi > 80:
@@ -2061,296 +2090,11 @@ REASONING: [giải thích ngắn]
         else:
             return "Neutral"
     
-    def predict_price_for_date(self, symbol: str, target_date, risk_tolerance: int = 50, time_horizon: str = "Trung hạn", investment_amount: int = 10000000):
-        """Dự đoán giá cổ phiếu cho một ngày cụ thể - LSTM PRIORITY
-        
-        Args:
-            symbol: Mã cổ phiếu
-            target_date: Ngày cần dự đoán (datetime object hoặc string)
-            risk_tolerance: Mức độ rủi ro (0-100)
-            time_horizon: Khung thời gian đầu tư
-            investment_amount: Số tiền đầu tư
-        """
-        try:
-            from datetime import date
-            
-            # Convert target_date to date object
-            if isinstance(target_date, str):
-                target_date_obj = datetime.strptime(target_date, '%Y-%m-%d').date()
-            elif isinstance(target_date, datetime):
-                target_date_obj = target_date.date()
-            elif isinstance(target_date, date):
-                target_date_obj = target_date
-            else:
-                target_date_obj = target_date.date() if hasattr(target_date, 'date') else target_date
-            
-            # Calculate days from now to target date - both are now date objects
-            current_date = datetime.now().date()
-            days_ahead = (target_date_obj - current_date).days
-            
-            # Validate target date
-            if days_ahead < 0:
-                return {"error": "Không thể dự đoán cho ngày trong quá khứ"}
-            elif days_ahead == 0:
-                # Special handling for today's prediction
-                return self._predict_today_close_price(symbol, risk_tolerance, time_horizon, investment_amount)
-            elif days_ahead > 365:
-                return {"error": "Chỉ có thể dự đoán tối đa 1 năm trong tương lai"}
-            
-            # 🧠 LSTM PRIORITY: Always try LSTM first for calendar predictions
-            if self.lstm_predictor and days_ahead > 0:
-                try:
-                    print(f"🧠 Using LSTM for calendar prediction: {symbol} - {days_ahead} days")
-                    lstm_result = self.lstm_predictor.predict_with_ai_enhancement(symbol, days_ahead)
-                    
-                    # LOWERED threshold for LSTM acceptance (was 15, now 10)
-                    if not lstm_result.get('error') and lstm_result['model_performance']['confidence'] > 10:
-                        print(f"✅ LSTM successful with {lstm_result['model_performance']['confidence']:.1f}% confidence")
-                        
-                        # LSTM successful - use it as primary method
-                        result = self._combine_lstm_with_traditional(lstm_result, symbol)
-                        result['method_used'] = 'LSTM Neural Network (Calendar)'
-                        result['lstm_confidence'] = lstm_result['model_performance']['confidence']
-                        result['primary_method'] = 'LSTM'
-                        
-                        # Set main prediction values from LSTM with enhanced interpolation
-                        interpolated_price = self._interpolate_price_for_date_lstm(result['predictions'], days_ahead, result['current_price'])
-                        if interpolated_price:
-                            result['predicted_price'] = interpolated_price['price']
-                            result['change_percent'] = interpolated_price['change_percent']
-                            result['interpolation_method'] = 'LSTM Enhanced'
-                        
-                        # Add LSTM-specific calendar insights
-                        result['lstm_calendar_analysis'] = self._get_lstm_calendar_analysis(lstm_result, days_ahead, target_date_obj)
-                        
-                        # Add risk analysis
-                        result['risk_adjusted_analysis'] = self._get_risk_adjusted_analysis(
-                            result, risk_tolerance, time_horizon, investment_amount
-                        )
-                        
-                        # Add AI enhancement
-                        if self.ai_agent:
-                            try:
-                                ai_analysis = self._get_ai_price_analysis(symbol, result, days_ahead, risk_tolerance, time_horizon)
-                                result.update(ai_analysis)
-                            except Exception as e:
-                                result['ai_error'] = str(e)
-                        
-                        # Add date-specific information
-                        result['target_date'] = target_date.strftime('%Y-%m-%d')
-                        result['days_ahead'] = days_ahead
-                        result['prediction_type'] = 'lstm_calendar'
-                        
-                        # Calculate interpolated price for exact date if not already done
-                        if not result.get('interpolated_price'):
-                            interpolated_price = self._interpolate_price_for_date_lstm(result['predictions'], days_ahead, result['current_price'])
-                            if interpolated_price:
-                                result['interpolated_price'] = interpolated_price
-                                result['predicted_price'] = interpolated_price['price']
-                                result['change_percent'] = interpolated_price['change_percent']
-                        
-                        # Add calendar-specific insights
-                        result['calendar_insights'] = self._get_calendar_insights(target_date, days_ahead)
-                        
-                        return result
-                        
-                    else:
-                        # LSTM failed or low confidence, fallback to traditional
-                        print(f"⚠️ LSTM failed or low confidence ({lstm_result.get('model_performance', {}).get('confidence', 0):.1f}%), using traditional")
-                        result = self.predict_price_enhanced(symbol, days_ahead, risk_tolerance, time_horizon, investment_amount)
-                        result['method_used'] = 'Traditional (LSTM low confidence)'
-                        result['lstm_fallback_reason'] = f"LSTM confidence {lstm_result.get('model_performance', {}).get('confidence', 0):.1f}% < 10%"
-                        
-                except Exception as e:
-                    # LSTM error, fallback to traditional
-                    print(f"❌ LSTM error: {e}, using traditional")
-                    result = self.predict_price_enhanced(symbol, days_ahead, risk_tolerance, time_horizon, investment_amount)
-                    result['method_used'] = f'Traditional (LSTM error)'
-                    result['lstm_error'] = str(e)
-            else:
-                # No LSTM available, use traditional
-                print(f"📊 No LSTM available, using traditional for {symbol}")
-                result = self.predict_price_enhanced(symbol, days_ahead, risk_tolerance, time_horizon, investment_amount)
-                result['method_used'] = 'Traditional (No LSTM)'
-            
-            if "error" in result:
-                return result
-            
-            # Add date-specific information for traditional methods
-            result['target_date'] = target_date.strftime('%Y-%m-%d')
-            result['days_ahead'] = days_ahead
-            result['prediction_type'] = 'traditional_calendar'
-            
-            # Calculate interpolated price for exact date if needed
-            if not result.get('interpolated_price'):
-                interpolated_price = self._interpolate_price_for_date(result['predictions'], days_ahead, result['current_price'])
-                if interpolated_price:
-                    result['interpolated_price'] = interpolated_price
-                    result['predicted_price'] = interpolated_price['price']
-                    result['change_percent'] = interpolated_price['change_percent']
-            
-            # Add calendar-specific insights
-            result['calendar_insights'] = self._get_calendar_insights(target_date, days_ahead)
-            
-            return result
-            
-        except Exception as e:
-            return {"error": f"Date prediction error: {str(e)}"}
+
     
-    def _interpolate_price_for_date(self, predictions: dict, days_ahead: int, current_price: float):
-        """Nội suy giá cho ngày cụ thể dựa trên các dự đoán có sẵn với validation"""
-        try:
-            # Collect all prediction points
-            prediction_points = []
-            
-            for timeframe, preds in predictions.items():
-                for period, data in preds.items():
-                    if 'days' in period:
-                        days = int(period.split('_')[0])
-                        price = data['price']
-                        # Validate price is reasonable
-                        if price > 0 and price < current_price * 5:  # Reasonable bounds
-                            prediction_points.append((days, price))
-            
-            # Add current price as day 0
-            prediction_points.append((0, current_price))
-            
-            # Sort by days
-            prediction_points.sort(key=lambda x: x[0])
-            
-            # Find surrounding points for interpolation
-            lower_point = None
-            upper_point = None
-            
-            for i, (days, price) in enumerate(prediction_points):
-                if days <= days_ahead:
-                    lower_point = (days, price)
-                if days >= days_ahead and upper_point is None:
-                    upper_point = (days, price)
-                    break
-            
-            # Interpolate price with enhanced validation
-            if lower_point and upper_point and lower_point[0] != upper_point[0]:
-                # Linear interpolation
-                days_diff = upper_point[0] - lower_point[0]
-                price_diff = upper_point[1] - lower_point[1]
-                target_days_from_lower = days_ahead - lower_point[0]
-                
-                interpolated_price = lower_point[1] + (price_diff * target_days_from_lower / days_diff)
-                
-                # Validate interpolated price
-                if interpolated_price <= 0 or interpolated_price > current_price * 3:
-                    print(f"⚠️ Invalid interpolated price: {interpolated_price}, using fallback")
-                    # Fallback: use simple percentage change
-                    change_percent = (price_diff / lower_point[1]) * 100 * (target_days_from_lower / days_diff)
-                    change_percent = max(-30, min(30, change_percent))  # Cap at ±30%
-                    interpolated_price = current_price * (1 + change_percent / 100)
-                
-                # Ensure meaningful change - FIXED for 1-day predictions
-                change_percent = ((interpolated_price - current_price) / current_price) * 100
-                if abs(change_percent) < 0.3:  # Increased threshold from 0.1% to 0.3%
-                    # Force minimum meaningful change based on trend and days_ahead
-                    if days_ahead == 1:
-                        min_change = 1.0 if interpolated_price > current_price else -1.0  # 1% for 1-day
-                    elif days_ahead <= 3:
-                        min_change = 0.8 if interpolated_price > current_price else -0.8  # 0.8% for 2-3 days
-                    else:
-                        min_change = 0.5 if interpolated_price > current_price else -0.5  # 0.5% for longer periods
-                    interpolated_price = current_price * (1 + min_change / 100)
-                    change_percent = min_change
-                
-                return {
-                    'price': round(interpolated_price, 2),
-                    'change_percent': round(change_percent, 2),
-                    'change_amount': round(interpolated_price - current_price, 2),
-                    'interpolation_method': 'linear_validated',
-                    'based_on_points': f"{lower_point[0]}d-{upper_point[0]}d"
-                }
-            elif lower_point:
-                # Use exact match or closest point with validation
-                predicted_price = lower_point[1]
-                change_percent = ((predicted_price - current_price) / current_price) * 100
-                
-                # Ensure meaningful change for exact matches too - FIXED for 1-day predictions
-                if abs(change_percent) < 0.3:  # Increased threshold
-                    # Force minimum meaningful change based on days_ahead
-                    if days_ahead == 1:
-                        min_change = 1.2 if predicted_price >= current_price else -1.2  # 1.2% for 1-day
-                    elif days_ahead <= 3:
-                        min_change = 0.8 if predicted_price >= current_price else -0.8  # 0.8% for 2-3 days
-                    else:
-                        min_change = 0.5 if predicted_price >= current_price else -0.5  # 0.5% for longer periods
-                    predicted_price = current_price * (1 + min_change / 100)
-                    change_percent = min_change
-                
-                return {
-                    'price': round(predicted_price, 2),
-                    'change_percent': round(change_percent, 2),
-                    'change_amount': round(predicted_price - current_price, 2),
-                    'interpolation_method': 'exact_match_validated',
-                    'based_on_points': f"{lower_point[0]}d"
-                }
-            
-            return None
-            
-        except Exception as e:
-            print(f"⚠️ Price interpolation failed: {e}")
-            return None
+
     
-    def _get_calendar_insights(self, target_date, days_ahead: int):
-        """Tạo insights dựa trên lịch và thời gian"""
-        try:
-            insights = []
-            
-            # Day of week analysis
-            weekday = target_date.weekday()
-            weekday_names = ['Thứ 2', 'Thứ 3', 'Thứ 4', 'Thứ 5', 'Thứ 6', 'Thứ 7', 'Chủ nhật']
-            
-            if weekday == 0:  # Monday
-                insights.append("📈 Thứ 2 thường có volatility cao do tin tức cuối tuần")
-            elif weekday == 4:  # Friday
-                insights.append("📊 Thứ 6 có thể có profit-taking trước cuối tuần")
-            elif weekday in [5, 6]:  # Weekend
-                insights.append("⚠️ Thị trường đóng cửa vào cuối tuần")
-            
-            # Month analysis
-            month = target_date.month
-            if month in [1, 12]:  # January/December
-                insights.append("🎯 Tháng 1/12 thường có hiệu ứng window dressing")
-            elif month in [3, 6, 9, 12]:  # Quarter end
-                insights.append("📋 Cuối quý có thể có rebalancing từ các quỹ")
-            
-            # Time horizon insights
-            if days_ahead <= 7:
-                insights.append("⚡ Dự đoán ngắn hạn - chịu ảnh hưởng mạnh từ tin tức")
-            elif days_ahead <= 30:
-                insights.append("📊 Dự đoán trung hạn - cân bằng giữa kỹ thuật và cơ bản")
-            elif days_ahead <= 90:
-                insights.append("📈 Dự đoán dài hạn - tập trung vào fundamentals")
-            else:
-                insights.append("🔮 Dự đoán rất dài hạn - độ tin cậy giảm theo thời gian")
-            
-            # Season analysis
-            if target_date.month in [12, 1, 2]:
-                insights.append("❄️ Mùa đông - thường có rally cuối năm")
-            elif target_date.month in [3, 4, 5]:
-                insights.append("🌸 Mùa xuân - earnings season Q1")
-            elif target_date.month in [6, 7, 8]:
-                insights.append("☀️ Mùa hè - thường có volume thấp")
-            else:
-                insights.append("🍂 Mùa thu - back-to-school effect")
-            
-            return {
-                'target_weekday': weekday_names[weekday],
-                'days_ahead': days_ahead,
-                'insights': insights,
-                'market_open': weekday < 5,  # Monday to Friday
-                'quarter': f"Q{(month-1)//3 + 1}",
-                'is_month_end': target_date.day > 25
-            }
-            
-        except Exception as e:
-            return {'error': f"Calendar insights error: {str(e)}"}
+
     def _interpolate_price_for_date_lstm(self, predictions: dict, days_ahead: int, current_price: float):
         """Enhanced LSTM-specific interpolation for calendar predictions"""
         try:
