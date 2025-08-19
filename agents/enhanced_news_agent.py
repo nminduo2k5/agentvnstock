@@ -65,7 +65,7 @@ class EnhancedNewsAgent:
             return {
                 "symbol": symbol,
                 "company_info": company_info,
-                "news": all_news[:60],  # Giới hạn 60 tin mới nhất
+                "news": all_news[:120],  # Tăng giới hạn lên 120 tin mới nhất
                 "news_count": len(all_news),
                 "financial_metrics": financial_metrics,
                 "internal_details": internal_details,
@@ -226,16 +226,35 @@ class EnhancedNewsAgent:
         import aiohttp
         import asyncio
         
-        # Danh sách URL tìm kiếm thực tế cho từng nguồn
+        # Danh sách URL tìm kiếm thực tế cho từng nguồn - mở rộng nhiều nguồn hơn
         search_urls = {
-            'hsx': "https://www.hsx.vn/vi/tin-tuc",
-            'hnx': "https://hnx.vn/tin-tuc-su-kien-ttcbhnx.html", 
+            # Nguồn chính thức - Priority cao nhất
+            'hsx': f"https://www.hsx.vn/vi/thong-tin-niem-yet/{symbol.upper()}",
+            'hnx': f"https://www.hnx.vn/vi-vn/thong-tin-cong-ty/{symbol.upper()}", 
             'vsd': f"https://vsd.vn/vi/tin-tuc-su-kien",
             'ssc': f"https://ssc.gov.vn/ubck/faces/oracle/webcenter/portalapp/pages/vi/danhsachcongty/danhsachcongty.jspx",
+            
+            # Nguồn tài chính chuyên nghiệp
             'cafef': f"https://cafef.vn/co-phieu/{symbol.upper()}.chn",
-            'fireant': f"https://fireant.vn/tim-kiem?q={symbol}",
-            '24hmoney': "https://24hmoney.vn/tin-moi?utm_medium=box_category",
-            'baodautu': "https://baodautu.vn/"
+            'vietstock': f"https://finance.vietstock.vn/{symbol.lower()}",  
+            'fireant': f"https://fireant.vn/co-phieu/{symbol.lower()}",
+            'investing': f"https://vn.investing.com/search/?q={symbol}",
+            'cophieu68': f"https://www.cophieu68.vn/quote/{symbol.lower()}.php",
+            'dnse': f"https://www.dnse.com.vn/co-phieu/{symbol.upper()}",
+            
+            # Nguồn tin tức tổng hợp  
+            '24hmoney': f"https://24hmoney.vn/tim-kiem?q={symbol}",
+            'baodautu': f"https://baodautu.vn/tim-kiem?q={symbol}",
+            'tinnhanhchungkhoan': f"https://www.tinnhanhchungkhoan.vn/search.html?q={symbol}",
+            'vietcapital': f"https://www.vietcap.com.vn/tim-kiem?q={symbol}",
+            'vneconomy': f"https://vneconomy.vn/tim-kiem.htm?keywords={symbol}",
+            'ndh': f"https://ndh.vn/tim-kiem/{symbol}",
+            
+            # Nguồn báo chí tổng quát
+            'vnexpress': f"https://vnexpress.net/tim-kiem?q={symbol}",
+            'dantri': f"https://dantri.com.vn/tim-kiem.htm?q={symbol}",
+            'tuoitre': f"https://tuoitre.vn/tim-kiem.htm?keywords={symbol}",
+            'thanhnien': f"https://thanhnien.vn/tim-kiem/?q={symbol}",
         }
         
         headers = {
@@ -248,19 +267,39 @@ class EnhancedNewsAgent:
         
         async def crawl_source(session, source_name, url):
             try:
-                async with session.get(url, timeout=8) as response:
+                # Tăng timeout cho các nguồn có thể chậm hơn
+                timeout = 12 if source_name in ['vietstock', 'investing', 'dnse'] else 8
+                async with session.get(url, timeout=timeout) as response:
                     if response.status == 200:
                         html = await response.text()
-                        return self._parse_multi_source_news(html, source_name, symbol, url)
+                        parsed_news = self._parse_multi_source_news(html, source_name, symbol, url)
+                        print(f"📰 {source_name}: Found {len(parsed_news)} news items")
+                        return parsed_news
+                    else:
+                        print(f"⚠️ {source_name}: HTTP {response.status}")
             except Exception as e:
-                print(f"Error crawling {source_name}: {e}")
+                print(f"❌ Error crawling {source_name}: {e}")
             return []
         
         all_news = []
         try:
-            async with aiohttp.ClientSession(headers=headers) as session:
+            # Cấu hình session để xử lý nhiều connection đồng thời
+            connector = aiohttp.TCPConnector(
+                limit=50,  # Tăng số connection tối đa
+                limit_per_host=10,  # Limit per host
+                ttl_dns_cache=300,  # Cache DNS
+                use_dns_cache=True,
+            )
+            
+            timeout = aiohttp.ClientTimeout(total=15, connect=5)
+            async with aiohttp.ClientSession(
+                headers=headers, 
+                connector=connector,
+                timeout=timeout
+            ) as session:
                 # Crawl tất cả nguồn song song
                 tasks = [crawl_source(session, source, url) for source, url in search_urls.items()]
+                print(f"🚀 Starting crawl from {len(search_urls)} sources for {symbol}...")
                 results = await asyncio.gather(*tasks, return_exceptions=True)
                 
                 # Gộp kết quả từ tất cả nguồn
@@ -272,7 +311,7 @@ class EnhancedNewsAgent:
                 unique_news = self._deduplicate_and_prioritize_news(all_news, symbol)
                 
                 print(f"✅ Crawled {len(unique_news)} news items for {symbol} from {len(search_urls)} sources")
-                return unique_news[:80]  # Trả về tối đa 80 tin mới nhất
+                return unique_news[:150]  # Tăng giới hạn lên 150 tin mới nhất
                 
         except Exception as e:
             print(f"Error in multi-source crawling for {symbol}: {e}")
@@ -617,6 +656,153 @@ class EnhancedNewsAgent:
                                     })
                         break
             
+            elif source_name == 'vietstock':
+                # VietStock parsing - nguồn chuyên về chứng khoán
+                selectors = ['.stock-news', '.news-item', '.timeline-item', '.search-result-item', 'article', '.post']
+                for selector in selectors:
+                    items = soup.select(selector)[:30]
+                    if items:
+                        for item in items:
+                            title_elem = item.select_one('h3 a, h2 a, h1 a, .title a, a[href*="/"]')
+                            if title_elem:
+                                title = title_elem.text.strip()
+                                if len(title) > 20:
+                                    link = title_elem.get('href', '')
+                                    if link and not link.startswith('http'):
+                                        if link.startswith('/'):
+                                            link = f"https://finance.vietstock.vn{link}"
+                                        else:
+                                            link = f"https://finance.vietstock.vn/{link}"
+                                    
+                                    summary_elem = item.select_one('.sapo, .desc, .summary, .excerpt, p')
+                                    summary = summary_elem.text.strip()[:200] if summary_elem else title[:100]
+                                    
+                                    date_elem = item.select_one('.date, .time, .published, time')
+                                    published = date_elem.text.strip() if date_elem else datetime.now().strftime('%d/%m/%Y')
+                                    
+                                    news_items.append({
+                                        "title": title,
+                                        "summary": summary,
+                                        "link": link,
+                                        "published": published,
+                                        "source": "VietStock",
+                                        "priority": 8 if symbol.upper() in title.upper() else 6
+                                    })
+                        break
+                        
+            elif source_name == 'investing':
+                # Investing.com VN parsing
+                selectors = ['.searchResultItem', '.js-inner-all-results-quotes-wrapper article', '.search-result', '.newsSearchResult']
+                for selector in selectors:
+                    items = soup.select(selector)[:20]
+                    if items:
+                        for item in items:
+                            title_elem = item.select_one('h3 a, h2 a, .title a, a[href*="/news/"]')
+                            if title_elem:
+                                title = title_elem.text.strip()
+                                if len(title) > 15:
+                                    link = title_elem.get('href', '')
+                                    if link and not link.startswith('http'):
+                                        if link.startswith('/'):
+                                            link = f"https://vn.investing.com{link}"
+                                    
+                                    summary_elem = item.select_one('.searchResultItemText, .summary, .desc')
+                                    summary = summary_elem.text.strip()[:200] if summary_elem else title[:100]
+                                    
+                                    news_items.append({
+                                        "title": title,
+                                        "summary": summary,
+                                        "link": link,
+                                        "published": datetime.now().strftime('%d/%m/%Y'),
+                                        "source": "Investing.com",
+                                        "priority": 6 if symbol.upper() in title.upper() else 4
+                                    })
+                        break
+                        
+            elif source_name == 'dnse':
+                # DNSE parsing
+                selectors = ['.news-item', '.article-item', '.post-item', '.content-item']
+                for selector in selectors:
+                    items = soup.select(selector)[:15]
+                    if items:
+                        for item in items:
+                            title_elem = item.select_one('h3 a, h2 a, .title a, a')
+                            if title_elem:
+                                title = title_elem.text.strip()
+                                if len(title) > 15:
+                                    link = title_elem.get('href', '')
+                                    if link and not link.startswith('http'):
+                                        if link.startswith('/'):
+                                            link = f"https://www.dnse.com.vn{link}"
+                                    
+                                    summary_elem = item.select_one('.desc, .summary, .excerpt')
+                                    summary = summary_elem.text.strip()[:200] if summary_elem else title[:100]
+                                    
+                                    news_items.append({
+                                        "title": title,
+                                        "summary": summary,
+                                        "link": link,
+                                        "published": datetime.now().strftime('%d/%m/%Y'),
+                                        "source": "DNSE",
+                                        "priority": 7 if symbol.upper() in title.upper() else 5
+                                    })
+                        break
+                        
+            elif source_name == 'vnexpress':
+                # VnExpress parsing
+                selectors = ['.search_result', '.item-news', '.article-item']
+                for selector in selectors:
+                    items = soup.select(selector)[:15]
+                    if items:
+                        for item in items:
+                            title_elem = item.select_one('h3 a, h2 a, .title-news a, a')
+                            if title_elem:
+                                title = title_elem.text.strip()
+                                if len(title) > 15:
+                                    link = title_elem.get('href', '')
+                                    if link and not link.startswith('http'):
+                                        if link.startswith('/'):
+                                            link = f"https://vnexpress.net{link}"
+                                    
+                                    summary_elem = item.select_one('.description, .desc')
+                                    summary = summary_elem.text.strip()[:200] if summary_elem else title[:100]
+                                    
+                                    news_items.append({
+                                        "title": title,
+                                        "summary": summary,
+                                        "link": link,
+                                        "published": datetime.now().strftime('%d/%m/%Y'),
+                                        "source": "VnExpress",
+                                        "priority": 5 if symbol.upper() in title.upper() else 3
+                                    })
+                        break
+                        
+            elif source_name == 'thanhnien':
+                # Thanh Niên parsing
+                selectors = ['.search-result-item', '.list-news-item', '.news-item']
+                for selector in selectors:
+                    items = soup.select(selector)[:12]
+                    if items:
+                        for item in items:
+                            title_elem = item.select_one('h3 a, h2 a, .title a, a')
+                            if title_elem:
+                                title = title_elem.text.strip()
+                                if len(title) > 15:
+                                    link = title_elem.get('href', '')
+                                    if link and not link.startswith('http'):
+                                        if link.startswith('/'):
+                                            link = f"https://thanhnien.vn{link}"
+                                    
+                                    news_items.append({
+                                        "title": title,
+                                        "summary": f"Tin tức về {symbol} từ Thanh Niên: {title[:100]}...",
+                                        "link": link,
+                                        "published": datetime.now().strftime('%d/%m/%Y'),
+                                        "source": "Thanh Niên",
+                                        "priority": 4 if symbol.upper() in title.upper() else 2
+                                    })
+                        break
+            
             # Fallback: tạo tin tức mặc định với link hoạt động
             if not news_items:
                 # Tạo tin tức fallback với link thực tế
@@ -634,15 +820,31 @@ class EnhancedNewsAgent:
                     'ssc': "https://ssc.gov.vn",
                     'cafef': f"https://cafef.vn/co-phieu/{symbol.upper()}.chn",
                     'fireant': f"https://fireant.vn/co-phieu/{symbol.lower()}",
-                    '24hmoney': f"https://24hmoney.vn/co-phieu/{symbol.lower()}",
-                    'baodautu': f"https://baodautu.vn/tim-kiem?q={symbol}"
+                    'vietstock': f"https://finance.vietstock.vn/{symbol.lower()}",
+                    'investing': f"https://vn.investing.com/search/?q={symbol}",
+                    'cophieu68': f"https://www.cophieu68.vn/quote/{symbol.lower()}.php",
+                    'dnse': f"https://www.dnse.com.vn/co-phieu/{symbol.upper()}",
+                    '24hmoney': f"https://24hmoney.vn/tim-kiem?q={symbol}",
+                    'baodautu': f"https://baodautu.vn/tim-kiem?q={symbol}",
+                    'tinnhanhchungkhoan': f"https://www.tinnhanhchungkhoan.vn/search.html?q={symbol}",
+                    'vietcapital': f"https://www.vietcap.com.vn/tim-kiem?q={symbol}",
+                    'vneconomy': f"https://vneconomy.vn/tim-kiem.htm?keywords={symbol}",
+                    'ndh': f"https://ndh.vn/tim-kiem/{symbol}",
+                    'vnexpress': f"https://vnexpress.net/tim-kiem?q={symbol}",
+                    'dantri': f"https://dantri.com.vn/tim-kiem.htm?q={symbol}",
+                    'tuoitre': f"https://tuoitre.vn/tim-kiem.htm?keywords={symbol}",
+                    'thanhnien': f"https://thanhnien.vn/tim-kiem/?q={symbol}"
                 }
                 
                 link = working_links.get(source_name, f"https://cafef.vn/co-phieu/{symbol.upper()}.chn")
                 
                 priority_map = {
                     'hsx': 10, 'hnx': 10, 'vsd': 9, 'ssc': 9,
-                    'cafef': 5, 'fireant': 4, 'baodautu': 4, '24hmoney': 3
+                    'vietstock': 8, 'dnse': 7, 'investing': 6,
+                    'cafef': 5, 'fireant': 4, 'baodautu': 4, 'cophieu68': 4,
+                    'tinnhanhchungkhoan': 4, 'vietcapital': 4, 'vneconomy': 4, 'ndh': 4,
+                    'vnexpress': 3, 'dantri': 3, 'tuoitre': 3, 'thanhnien': 3,
+                    '24hmoney': 3
                 }
                 priority = priority_map.get(source_name, 2)
                 
@@ -684,8 +886,11 @@ class EnhancedNewsAgent:
             has_symbol = 1 if symbol.upper() in news.get('title', '').upper() else 0
             source_weight = {
                 'HSX': 10, 'HNX': 10, 'VSD': 9, 'SSC': 9,
-                'CafeF': 5, 'FireAnt': 4, 'BaoDauTu': 4, 
-                '24HMoney': 3, 'DanTri': 4, 'Tuổi Trẻ': 4
+                'VietStock': 8, 'DNSE': 7, 'Investing.com': 6,
+                'CafeF': 5, 'FireAnt': 4, 'BaoDauTu': 4, 'Cophieu68': 4,
+                'TinNhanhChungKhoan': 4, 'VietCapital': 4, 'VnEconomy': 4, 'NDH': 4,
+                'VnExpress': 3, 'DanTri': 3, 'Tuổi Trẻ': 3, 'Thanh Niên': 3,
+                '24HMoney': 3
             }.get(news.get('source', ''), 1)
             
             return (priority, has_symbol, source_weight)
